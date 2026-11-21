@@ -1,0 +1,32 @@
+[package]
+name = "nearby-print"
+version = "0.1.0"
+description = "A minimalist app to share a wired printer over local Wi-Fi."
+authors = ["you"]
+edition = "2021"
+build = "build.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0-beta", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0-beta", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+printers = "2.3.0"
+ipp = "6.0.1"
+tokio = { version = "1", features = ["full"] }
+axum = "0.7"
+mdns-sd = "0.11"
+local-ip-address = "0.6"
+uuid = { version = "1", features = ["v4"] }
+hostname = "0.3"
+tauri-plugin-opener = "2"
+# The client half of the relay: the only thing this is used for is one plain
+# `POST http://<host>:8631/api/relay-print` on the local network, so TLS, the
+# cookie store and the charset decoder are all switched off - a print job
+# should not drag a TLS stack into a binary that never speaks HTTPS.
+reqwest = { version = "0.13", default-features = false }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

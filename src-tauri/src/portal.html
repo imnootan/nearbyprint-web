@@ -1,0 +1,2493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>NearbyPrint - Smart Self-Service Print Portal</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --success: #16a34a;
+      --radius: 14px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --primary: #3b82f6;
+        --primary-hover: #60a5fa;
+        --bg: #090d16;
+        --card-bg: #131b2e;
+        --text: #f8fafc;
+        --text-muted: #94a3b8;
+        --border: #1e293b;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding-bottom: 40px;
+    }
+    header {
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.05rem;
+    }
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--primary);
+      color: white;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .lang-btn {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s;
+    }
+    .lang-btn:hover {
+      border-color: var(--primary);
+    }
+    .badge-wifi {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(37, 99, 235, 0.1);
+      color: var(--primary);
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 4px 9px;
+      border-radius: 20px;
+    }
+    .container {
+      max-width: 520px;
+      margin: 16px auto;
+      padding: 0 16px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      margin-bottom: 16px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .label-hint {
+      font-weight: normal;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.95rem;
+      background: transparent;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: var(--bg);
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    .tab-btn {
+      padding: 9px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .tab-btn.active {
+      background: var(--card-bg);
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .card-upload-box {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      aspect-ratio: 1.586;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      cursor: pointer;
+      position: relative;
+      background: var(--bg);
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .card-upload-box:hover {
+      border-color: var(--primary);
+    }
+    .card-upload-box input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      z-index: 2;
+    }
+    .card-upload-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .card-actions {
+      position: absolute;
+      bottom: 6px;
+      right: 6px;
+      display: flex;
+      gap: 4px;
+      z-index: 30;
+      pointer-events: auto;
+    }
+    .card-actions button {
+      pointer-events: auto;
+      cursor: pointer;
+      position: relative;
+      z-index: 35;
+    }
+    .action-btn-sm {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(4px);
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .action-btn-sm.primary {
+      background: var(--primary);
+    }
+    .a4-preview-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+    .a4-canvas-wrapper {
+      max-width: 220px;
+      margin: 8px auto 0;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+      border-radius: 4px;
+      overflow: hidden;
+      line-height: 0;
+    }
+    #a4Canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      background: white;
+    }
+    .upload-box {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 28px 16px;
+      text-align: center;
+      background: var(--bg);
+      cursor: pointer;
+      position: relative;
+      margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+    .upload-box:hover { border-color: var(--primary); }
+    .upload-box input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+    }
+    .file-preview {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .file-name {
+      font-size: 0.85rem;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 220px;
+    }
+    .filter-selector {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+    .filter-pills {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .filter-pill {
+      padding: 8px 4px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .filter-pill.active {
+      border-color: var(--primary);
+      background: rgba(37, 99, 235, 0.08);
+      color: var(--primary);
+    }
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .counter-control {
+      display: flex;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .counter-btn {
+      width: 42px;
+      height: 40px;
+      border: none;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .counter-val {
+      flex: 1;
+      text-align: center;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    .mode-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      height: 40px;
+    }
+    .mode-btn {
+      border: none;
+      background: var(--bg);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mode-btn.active {
+      background: var(--primary);
+      color: white;
+    }
+    .custom-select {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+      cursor: pointer;
+      height: 40px;
+      transition: border-color 0.2s;
+    }
+    .custom-select:focus {
+      border-color: var(--primary);
+    }
+    .submit-btn {
+      width: 100%;
+      padding: 13px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+      transition: background-color 0.2s;
+    }
+    .submit-btn:hover { background-color: var(--primary-hover); }
+    .submit-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .success-view {
+      display: none;
+      text-align: center;
+      padding: 24px 16px;
+    }
+    .success-icon {
+      width: 56px;
+      height: 56px;
+      background: rgba(22, 163, 74, 0.12);
+      color: var(--success);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      margin: 0 auto 14px;
+    }
+    .token-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      margin: 16px 0;
+      text-align: left;
+      font-size: 0.85rem;
+    }
+    .token-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .token-row:last-child { margin-bottom: 0; }
+    .ad-banner {
+      background: var(--bg);
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin: 18px 0;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    /* Modal for Adobe Scan style 4-Corner Cropping & Loupe */
+    .crop-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 100;
+      flex-direction: column;
+      touch-action: none;
+    }
+    .crop-header {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: white;
+      background: #111827;
+      border-bottom: 1px solid #374151;
+    }
+    .crop-body {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 10px;
+    }
+    #cropCanvas {
+      max-width: 100%;
+      max-height: 100%;
+      box-shadow: 0 0 24px rgba(0,0,0,0.7);
+    }
+    .crop-footer {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #111827;
+      border-top: 1px solid #374151;
+      gap: 8px;
+    }
+
+    /* Magnifying Loupe Overlay */
+    #cropLoupe {
+      display: none;
+      position: fixed;
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      border: 3px solid #ffffff;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      pointer-events: none;
+      z-index: 150;
+      overflow: hidden;
+      background: #000;
+    }
+    #cropLoupe canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .loupe-crosshair {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .loupe-crosshair::before {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 2px;
+      background: #00f2fe;
+      box-shadow: 0 0 4px rgba(0,0,0,0.8);
+    }
+    .loupe-crosshair::after {
+      content: '';
+      position: absolute;
+      height: 18px;
+      width: 2px;
+      background: #00f2fe;
+      box-shadow: 0 0 4px rgba(0,0,0,0.8);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🖨️</div>
+      <span id="uiPortalTitle">NearbyPrint Self-Service</span>
+    </div>
+    <div class="header-right">
+      <button type="button" class="lang-btn" onclick="toggleLanguage()" id="langToggleBtn" title="Switch Language">
+        🌐 <span id="langLabel">हिन्दी</span>
+      </button>
+      <div class="badge-wifi">
+        <span>●</span> <span id="uiWifiBadge">Local Wi-Fi</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="card" id="formCard">
+      <!-- Customer Name -->
+      <div class="form-group">
+        <label for="customerName">
+          <span id="uiCustomerNameLabel">Customer Name</span>
+          <span class="label-hint" id="uiCustomerNameHint">(Required for print identification)</span>
+        </label>
+        <input type="text" id="customerName" placeholder="e.g. Rahul Sharma" autocomplete="name" required>
+      </div>
+
+      <!-- Mode Tabs -->
+      <div class="tabs">
+        <button type="button" class="tab-btn active" id="tabCard" onclick="switchMode('card')">
+          <span>🪪</span> <span id="uiTabCard">Aadhaar / PAN (CR80)</span>
+        </button>
+        <button type="button" class="tab-btn" id="tabDoc" onclick="switchMode('doc')">
+          <span>📄</span> <span id="uiTabDoc">Document / Photos</span>
+        </button>
+      </div>
+
+      <!-- Smart Card Mode (CR80 Auto-Layout as per user reference) -->
+      <div id="cardSection">
+        <!-- Card Print Layout (Both sides vs Single side) -->
+        <div class="form-group">
+          <label style="margin-bottom: 6px;" id="uiCardLayoutLabel">Card Print Layout</label>
+          <div class="filter-pills" style="grid-template-columns: 1fr 1fr 1fr; margin-top: 0; margin-bottom: 12px;">
+            <button type="button" class="filter-pill active" id="layoutBoth" onclick="setCardLayout('both')">
+              🪪 <span id="uiLayoutBoth">Front &amp; Back</span>
+            </button>
+            <button type="button" class="filter-pill" id="layoutFront" onclick="setCardLayout('front_only')">
+              📄 <span id="uiLayoutFront">Front Only</span>
+            </button>
+            <button type="button" class="filter-pill" id="layoutBack" onclick="setCardLayout('back_only')">
+              📑 <span id="uiLayoutBack">Back Only</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card-grid" id="cardUploadGrid">
+          <!-- Front Card -->
+          <div class="card-upload-box" id="frontBox">
+            <input type="file" id="frontInput" accept="image/png,image/jpeg,image/webp,.jpg,.jpeg,.png">
+            <div id="frontPlaceholder">
+              <div style="font-size: 1.5rem;">📸</div>
+              <div style="font-size: 0.8rem; font-weight: 600; margin-top: 3px;" id="uiFrontTitle">Front Side</div>
+              <div style="font-size: 0.7rem; color: var(--text-muted);" id="uiFrontHint">Tap to upload</div>
+            </div>
+            <img id="frontImg" style="display: none;" alt="Front">
+            <div class="card-actions" id="frontActions" style="display: none;">
+              <button type="button" class="action-btn-sm" onclick="openCropModal('front', event)" id="uiFrontCropBtn">✂️ Crop</button>
+              <button type="button" class="action-btn-sm" onclick="rotateCard('front', event)">↻ 90°</button>
+              <button type="button" class="action-btn-sm" onclick="triggerFileInput('front', event)" id="uiFrontChangeBtn">🔄 Change</button>
+            </div>
+          </div>
+
+          <!-- Back Card -->
+          <div class="card-upload-box" id="backBox">
+            <input type="file" id="backInput" accept="image/png,image/jpeg,image/webp,.jpg,.jpeg,.png">
+            <div id="backPlaceholder">
+              <div style="font-size: 1.5rem;">📸</div>
+              <div style="font-size: 0.8rem; font-weight: 600; margin-top: 3px;" id="uiBackTitle">Back Side</div>
+              <div style="font-size: 0.7rem; color: var(--text-muted);" id="uiBackHint">Tap to upload</div>
+            </div>
+            <img id="backImg" style="display: none;" alt="Back">
+            <div class="card-actions" id="backActions" style="display: none;">
+              <button type="button" class="action-btn-sm" onclick="openCropModal('back', event)" id="uiBackCropBtn">✂️ Crop</button>
+              <button type="button" class="action-btn-sm" onclick="rotateCard('back', event)">↻ 90°</button>
+              <button type="button" class="action-btn-sm" onclick="triggerFileInput('back', event)" id="uiBackChangeBtn">🔄 Change</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Xerox Placement Options -->
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label style="margin-bottom: 6px;" id="uiPlacementLabel">Xerox Page Placement</label>
+          <div class="filter-pills" style="grid-template-columns: 1fr 1fr; margin-top: 0;">
+            <button type="button" class="filter-pill active" id="placeTop" onclick="setPlacement('top')">
+              ⬆️ <span id="uiPlaceTop">Upper Half (Standard Xerox)</span>
+            </button>
+            <button type="button" class="filter-pill" id="placeCenter" onclick="setPlacement('center')">
+              🎯 <span id="uiPlaceCenter">Center of Page</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- A4 Auto-Layout Preview (Front on Top, Back directly below it in top half) -->
+        <div class="a4-preview-box">
+          <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;">
+            <span id="uiA4PreviewTitle">A4 Xerox Sheet Preview</span>
+            <span style="color: var(--primary);" id="uiA4PreviewSub">Standard CR80 Layout</span>
+          </div>
+          <div class="a4-canvas-wrapper">
+            <canvas id="a4Canvas" width="595" height="842"></canvas>
+          </div>
+          <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;" id="uiA4LayoutDesc">
+            Both Front &amp; Back cards are automatically aligned in the upper half of A4 page.
+          </p>
+        </div>
+      </div>
+
+      <!-- Normal Document Mode -->
+      <div id="docSection" style="display: none;">
+        <div class="upload-box" id="uploadBox">
+          <input type="file" id="fileInput" accept=".pdf,image/png,image/jpeg,image/webp">
+          <div style="font-size: 1.8rem; margin-bottom: 4px;">📁</div>
+          <div style="font-weight: 600; font-size: 0.95rem;" id="uiUploadDocTitle">Upload Document or Photo</div>
+          <div style="font-size: 0.78rem; color: var(--text-muted);" id="uiUploadDocSub">PDF, JPG, PNG (Max 50MB)</div>
+        </div>
+        <div id="filePreviewBox" class="file-preview" style="display: none;">
+          <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
+            <img id="docPreviewThumb" style="width: 52px; height: 52px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); display: none;" alt="Preview">
+            <div id="docIconPdf" style="font-size: 2rem; display: none;">📄</div>
+            <div style="flex: 1; min-width: 0; text-align: left;">
+              <span class="file-name" id="fileName" style="font-weight: 600; display: block;">document.jpg</span>
+              <span id="fileMeta" style="font-size: 0.72rem; color: var(--text-muted);">Ready to print</span>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <button type="button" id="docCropBtn" class="action-btn-sm" style="display: none;" onclick="openCropModal('doc', event)">✂️ Adobe Crop</button>
+              <button type="button" class="action-btn-sm" onclick="clearFile()" style="background: rgba(239, 68, 68, 0.12); color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">✕</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Document Duplex / Sides -->
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label style="margin-bottom: 6px;" id="uiDocSidesLabel">Print Sides</label>
+          <div class="filter-pills" style="grid-template-columns: 1fr 1fr; margin-top: 0;">
+            <button type="button" class="filter-pill active" id="sideSingle" onclick="setDocSides('single')">
+              📄 <span id="uiSideSingle">Single-Sided (1-Side)</span>
+            </button>
+            <button type="button" class="filter-pill" id="sideDouble" onclick="setDocSides('double')">
+              📑 <span id="uiSideDouble">Double-Sided (Duplex)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Adobe Scan Magic Enhancement Filter -->
+      <div class="filter-selector">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <label style="margin: 0; font-size: 0.8rem;" id="uiFilterLabel">Document Enhancement Filter</label>
+          <span style="font-size: 0.7rem; color: var(--primary); font-weight: 600;" id="uiFilterSub">Adobe Scan Filter</span>
+        </div>
+        <div class="filter-pills">
+          <button type="button" class="filter-pill active" id="filterBw" onclick="setDocFilter('bw')">
+            ✨ <span id="uiFilterBwTitle">Crisp B&amp;W</span><br><span style="font-size: 0.65rem; font-weight: normal;" id="uiFilterBwSub">(Shadow-free)</span>
+          </button>
+          <button type="button" class="filter-pill" id="filterColor" onclick="setDocFilter('color')">
+            🎨 <span id="uiFilterColorTitle">Magic Color</span><br><span style="font-size: 0.65rem; font-weight: normal;" id="uiFilterColorSub">(Clean paper)</span>
+          </button>
+          <button type="button" class="filter-pill" id="filterOrig" onclick="setDocFilter('original')">
+            📷 <span id="uiFilterOrigTitle">Original</span><br><span style="font-size: 0.65rem; font-weight: normal;" id="uiFilterOrigSub">(As captured)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Paper Size & Orientation Grid -->
+      <div class="options-grid">
+        <div>
+          <label id="uiPaperSizeLabel">Paper Size</label>
+          <select id="paperSize" onchange="changePaperSize(this.value)" class="custom-select">
+            <option value="A4">A4 (Standard Xerox)</option>
+            <option value="Legal">Legal (8.5×14")</option>
+            <option value="4x6">4×6 Photo</option>
+          </select>
+        </div>
+        <div>
+          <label id="uiOrientationLabel">Orientation</label>
+          <div class="mode-toggle">
+            <button type="button" class="mode-btn active" id="btnPortrait" onclick="setOrientation('portrait')">Portrait</button>
+            <button type="button" class="mode-btn" id="btnLandscape" onclick="setOrientation('landscape')">Landscape</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Options (Copies & Color) -->
+      <div class="options-grid">
+        <div>
+          <label id="uiCopiesLabel">Copies</label>
+          <div class="counter-control">
+            <button type="button" class="counter-btn" onclick="changeCopies(-1)">-</button>
+            <span class="counter-val" id="copiesVal">1</span>
+            <button type="button" class="counter-btn" onclick="changeCopies(1)">+</button>
+          </div>
+        </div>
+        <div>
+          <label id="uiColorModeLabel">Print Color</label>
+          <div class="mode-toggle">
+            <button type="button" class="mode-btn active" id="btnBw" onclick="setColorMode('bw')">B&amp;W</button>
+            <button type="button" class="mode-btn" id="btnColor" onclick="setColorMode('color')">Color</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Submit Button -->
+      <button type="button" class="submit-btn" id="submitBtn" onclick="submitPrint()">
+        <span id="btnText">🚀 Send to Printer</span>
+      </button>
+
+      <div style="text-align: center; font-size: 0.75rem; color: var(--text-muted); margin-top: 14px;" id="uiPrivacyFooter">
+        🔒 Files are automatically deleted from server memory immediately after printing.
+      </div>
+    </div>
+
+    <!-- Success & Waiting Screen -->
+    <div class="card success-view" id="successView">
+      <div class="success-icon">✓</div>
+      <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 4px;" id="uiSuccessTitle">Print Job Submitted Successfully!</h2>
+      <p style="color: var(--text-muted); font-size: 0.85rem;" id="uiSuccessSub">Your document has been sent directly to the counter printer.</p>
+
+      <div class="token-card">
+        <div class="token-row">
+          <span style="color: var(--text-muted);" id="uiResCustomerLabel">Customer:</span>
+          <span style="font-weight: 600;" id="resCustomer">-</span>
+        </div>
+        <div class="token-row">
+          <span style="color: var(--text-muted);" id="uiResDetailsLabel">Print Details:</span>
+          <span style="font-weight: 600;" id="resDetails">-</span>
+        </div>
+        <div class="token-row">
+          <span style="color: var(--text-muted);" id="uiResStatusLabel">Status:</span>
+          <span style="color: var(--primary); font-weight: 600;" id="uiResStatusVal">Waiting for Counter Print</span>
+        </div>
+      </div>
+
+      <!-- AdSense / Banner placeholder -->
+      <div class="ad-banner">
+        <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Advertisement</div>
+        <div style="font-weight: 600; color: var(--text);">NearbyPrint Smart Self-Service</div>
+        <div style="font-size: 0.7rem;">Fast · 100% Private · Zero WhatsApp Hassle</div>
+      </div>
+
+      <button type="button" class="action-btn-sm" style="width: 100%; padding: 12px; font-size: 0.85rem;" onclick="resetForm()" id="uiPrintAnotherBtn">
+        + Print Another Document
+      </button>
+    </div>
+  </div>
+
+  <!-- Adobe Scan 4-Corner Crop Modal with Magnifying Loupe -->
+  <div id="cropModal" class="crop-modal">
+    <div class="crop-header">
+      <span style="font-weight: 600; font-size: 0.9rem;" id="uiCropHeader">📐 Adobe Corner Crop &amp; Straighten</span>
+      <button type="button" onclick="closeCropModal()" style="background: none; border: none; color: white; font-size: 1.2rem; cursor: pointer;">✕</button>
+    </div>
+    <div class="crop-body" id="cropContainer">
+      <canvas id="cropCanvas"></canvas>
+    </div>
+    <div class="crop-footer">
+      <button type="button" class="action-btn-sm" onclick="autoDetectCorners()" id="uiCropAutoBtn">🎯 Auto Detect</button>
+      <button type="button" class="action-btn-sm" onclick="resetCropCorners()" id="uiCropResetBtn">🔄 Reset</button>
+      <button type="button" class="action-btn-sm primary" onclick="applyCropAndClose()" id="uiCropApplyBtn">✓ Crop &amp; Apply</button>
+    </div>
+  </div>
+
+  <!-- Floating Magnifier Loupe -->
+  <div id="cropLoupe">
+    <canvas id="loupeCanvas" width="120" height="120"></canvas>
+    <div class="loupe-crosshair"></div>
+  </div>
+
+  <script>
+    // -------------------------------------------------------------
+    // Bilingual Localization (Professional English & Pure Hindi)
+    // No Hinglish!
+    // -------------------------------------------------------------
+    const I18N = {
+      en: {
+        portalTitle: 'NearbyPrint Self-Service',
+        langLabel: 'हिन्दी',
+        wifiBadge: 'Local Wi-Fi',
+        customerNameLabel: 'Customer Name',
+        customerNameHint: '(Required for print identification)',
+        customerPlaceholder: 'e.g. Rahul Sharma',
+        tabCard: 'Aadhaar / PAN (CR80)',
+        tabDoc: 'Document / Photos',
+        cardLayoutLabel: 'Card Print Layout',
+        layoutBoth: 'Front & Back',
+        layoutFront: 'Front Only',
+        layoutBack: 'Back Only',
+        placementLabel: 'Xerox Page Placement',
+        placeTop: 'Upper Half (Standard Xerox)',
+        placeCenter: 'Center of Page',
+        docSidesLabel: 'Print Sides',
+        sideSingle: 'Single-Sided (1-Side)',
+        sideDouble: 'Double-Sided (Duplex)',
+        paperSizeLabel: 'Paper Size',
+        orientationLabel: 'Orientation',
+        portrait: 'Portrait',
+        landscape: 'Landscape',
+        frontTitle: 'Front Side',
+        frontHint: 'Tap to upload',
+        backTitle: 'Back Side',
+        backHint: 'Tap to upload',
+        cropBtn: '✂️ Crop',
+        a4PreviewTitle: 'A4 Xerox Sheet Preview',
+        a4PreviewSub: 'Standard CR80 Layout',
+        a4LayoutDesc: 'Both Front & Back cards are automatically aligned in the upper half of A4 page.',
+        uploadDocTitle: 'Upload Document or Photo',
+        uploadDocSub: 'PDF, JPG, PNG (Max 50MB)',
+        filterLabel: 'Document Enhancement Filter',
+        filterSub: 'Adobe Scan Filter',
+        filterBwTitle: 'Crisp B&W',
+        filterBwSub: '(Shadow-free)',
+        filterColorTitle: 'Magic Color',
+        filterColorSub: '(Clean paper)',
+        filterOrigTitle: 'Original',
+        filterOrigSub: '(As captured)',
+        copiesLabel: 'Copies',
+        colorModeLabel: 'Print Color',
+        btnBw: 'B&W',
+        btnColor: 'Color',
+        submitBtn: '🚀 Send to Printer',
+        submitting: 'Submitting Job…',
+        privacyFooter: '🔒 Files are automatically deleted from server memory immediately after printing.',
+        successTitle: 'Print Job Submitted Successfully!',
+        successSub: 'Your document has been sent directly to the counter printer.',
+        resCustomerLabel: 'Customer:',
+        resDetailsLabel: 'Print Details:',
+        resStatusLabel: 'Status:',
+        resStatusVal: 'Waiting for Counter Print',
+        printAnotherBtn: '+ Print Another Document',
+        cropHeader: '📐 Adobe Corner Crop & Straighten',
+        cropAutoBtn: '🎯 Auto Detect',
+        cropResetBtn: '🔄 Reset',
+        cropApplyBtn: '✓ Crop & Apply',
+        btnChange: '🔄 Change',
+        frontCardPlaceholder: 'Front (Top)',
+        backCardPlaceholder: 'Back (Bottom)',
+        alertEnterName: 'Please enter your name.',
+        alertUploadCard: 'Please upload at least one side of your Aadhaar or PAN card.',
+        alertSelectDoc: 'Please select a document or image to print.',
+        alertUploadFail: 'Print upload failed. Please ensure you are connected to the shop Wi-Fi network.',
+      },
+      hi: {
+        portalTitle: 'NearbyPrint सेल्फ़-सर्विस',
+        langLabel: 'English',
+        wifiBadge: 'लोकल वाई-फ़ाई',
+        customerNameLabel: 'ग्राहक का नाम',
+        customerNameHint: '(प्रिंट पहचान के लिए आवश्यक)',
+        customerPlaceholder: 'जैसे: राहुल शर्मा',
+        tabCard: 'आधार / पैन कार्ड (CR80)',
+        tabDoc: 'दस्तावेज़ / फ़ोटो',
+        cardLayoutLabel: 'कार्ड प्रिंट लेआउट',
+        layoutBoth: 'सामने और पीछे (दोनों)',
+        layoutFront: 'केवल सामने (Front Only)',
+        layoutBack: 'केवल पीछे (Back Only)',
+        placementLabel: 'जेरॉक्स स्थिति (Placement)',
+        placeTop: 'ऊपरी आधा भाग (मानक जेरॉक्स)',
+        placeCenter: 'कागज़ के बीच में',
+        docSidesLabel: 'प्रिंट की सतह',
+        sideSingle: 'एक तरफ (Single Sided)',
+        sideDouble: 'दोनों तरफ (Duplex)',
+        paperSizeLabel: 'कागज़ का साइज़',
+        orientationLabel: 'दिशा (Orientation)',
+        portrait: 'लंबवत (Portrait)',
+        landscape: 'क्षैतिज (Landscape)',
+        frontTitle: 'सामने का भाग (Front)',
+        frontHint: 'फ़ोटो अपलोड करें',
+        backTitle: 'पीछे का भाग (Back)',
+        backHint: 'फ़ोटो अपलोड करें',
+        cropBtn: '✂️ क्रॉप करें',
+        a4PreviewTitle: 'A4 जेरॉक्स शीट प्रीव्यू',
+        a4PreviewSub: 'मानक CR80 लेआउट',
+        a4LayoutDesc: 'सामने और पीछे के दोनों भाग A4 शीट के ऊपरी हिस्से में स्वचालित रूप से व्यवस्थित हैं।',
+        uploadDocTitle: 'दस्तावेज़ या फ़ोटो अपलोड करें',
+        uploadDocSub: 'PDF, JPG, PNG (अधिकतम 50MB)',
+        filterLabel: 'दस्तावेज़ सुधार फ़िल्टर',
+        filterSub: 'अडोब स्कैन फ़िल्टर',
+        filterBwTitle: 'स्पष्ट B&W',
+        filterBwSub: '(छाया रहित)',
+        filterColorTitle: 'मैजिक कलर',
+        filterColorSub: '(साफ़ कागज़)',
+        filterOrigTitle: 'मूल प्रति',
+        filterOrigSub: '(जैसा खींचा गया)',
+        copiesLabel: 'प्रतियों की संख्या (Copies)',
+        colorModeLabel: 'प्रिंट का प्रकार',
+        btnBw: 'ब्लैक & व्हाइट',
+        btnColor: 'रंगीन (Color)',
+        submitBtn: '🚀 प्रिंट के लिए भेजें',
+        submitting: 'भेजा जा रहा है…',
+        privacyFooter: '🔒 प्रिंट होते ही फ़ाइल सिस्टम से स्वतः हमेशा के लिए हटा दी जाती है।',
+        successTitle: 'प्रिंट सफलतापूर्वक भेजा गया!',
+        successSub: 'आपका दस्तावेज़ सीधे काउंटर प्रिंटर को भेज दिया गया है।',
+        resCustomerLabel: 'ग्राहक:',
+        resDetailsLabel: 'प्रिंट विवरण:',
+        resStatusLabel: 'स्थिति:',
+        resStatusVal: 'काउंटर प्रिंट की प्रतीक्षा में',
+        printAnotherBtn: '+ दूसरा दस्तावेज़ प्रिंट करें',
+        cropHeader: '📐 कॉर्नर क्रॉप और सीधा करें',
+        cropAutoBtn: '🎯 स्वतः पहचान',
+        cropResetBtn: '🔄 रीसेट',
+        cropApplyBtn: '✓ क्रॉप लागू करें',
+        btnChange: '🔄 बदलें',
+        frontCardPlaceholder: 'सामने (ऊपर)',
+        backCardPlaceholder: 'पीछे (नीचे)',
+        alertEnterName: 'कृपया अपना नाम दर्ज करें।',
+        alertUploadCard: 'कृपया आधार या पैन कार्ड का कम से कम एक भाग अपलोड करें।',
+        alertSelectDoc: 'कृपया प्रिंट करने के लिए कोई दस्तावेज़ या फ़ोटो चुनें।',
+        alertUploadFail: 'प्रिंट अपलोड विफल रहा। कृपया जांचें कि आप दुकान के वाई-फ़ाई से जुड़े हैं।',
+      }
+    };
+
+    // Determine initial language: check localStorage, otherwise navigator.language
+    let currentLang = localStorage.getItem('nearby_portal_lang') ||
+      ((navigator.language && navigator.language.toLowerCase().startsWith('hi')) ? 'hi' : 'en');
+
+    function applyLanguage(lang) {
+      currentLang = lang;
+      localStorage.setItem('nearby_portal_lang', lang);
+      const t = I18N[lang];
+
+      document.getElementById('uiPortalTitle').innerText = t.portalTitle;
+      document.getElementById('langLabel').innerText = t.langLabel;
+      document.getElementById('uiWifiBadge').innerText = t.wifiBadge;
+      document.getElementById('uiCustomerNameLabel').innerText = t.customerNameLabel;
+      document.getElementById('uiCustomerNameHint').innerText = t.customerNameHint;
+      document.getElementById('customerName').placeholder = t.customerPlaceholder;
+      document.getElementById('uiTabCard').innerText = t.tabCard;
+      document.getElementById('uiTabDoc').innerText = t.tabDoc;
+
+      if (document.getElementById('uiCardLayoutLabel')) document.getElementById('uiCardLayoutLabel').innerText = t.cardLayoutLabel;
+      if (document.getElementById('uiLayoutBoth')) document.getElementById('uiLayoutBoth').innerText = t.layoutBoth;
+      if (document.getElementById('uiLayoutFront')) document.getElementById('uiLayoutFront').innerText = t.layoutFront;
+      if (document.getElementById('uiLayoutBack')) document.getElementById('uiLayoutBack').innerText = t.layoutBack;
+
+      if (document.getElementById('uiPlacementLabel')) document.getElementById('uiPlacementLabel').innerText = t.placementLabel;
+      if (document.getElementById('uiPlaceTop')) document.getElementById('uiPlaceTop').innerText = t.placeTop;
+      if (document.getElementById('uiPlaceCenter')) document.getElementById('uiPlaceCenter').innerText = t.placeCenter;
+
+      if (document.getElementById('uiDocSidesLabel')) document.getElementById('uiDocSidesLabel').innerText = t.docSidesLabel;
+      if (document.getElementById('uiSideSingle')) document.getElementById('uiSideSingle').innerText = t.sideSingle;
+      if (document.getElementById('uiSideDouble')) document.getElementById('uiSideDouble').innerText = t.sideDouble;
+
+      if (document.getElementById('uiPaperSizeLabel')) document.getElementById('uiPaperSizeLabel').innerText = t.paperSizeLabel;
+      if (document.getElementById('uiOrientationLabel')) document.getElementById('uiOrientationLabel').innerText = t.orientationLabel;
+      if (document.getElementById('btnPortrait')) document.getElementById('btnPortrait').innerText = t.portrait;
+      if (document.getElementById('btnLandscape')) document.getElementById('btnLandscape').innerText = t.landscape;
+
+      document.getElementById('uiFrontTitle').innerText = t.frontTitle;
+      document.getElementById('uiFrontHint').innerText = t.frontHint;
+      document.getElementById('uiBackTitle').innerText = t.backTitle;
+      document.getElementById('uiBackHint').innerText = t.backHint;
+      document.getElementById('uiFrontCropBtn').innerText = t.cropBtn;
+      document.getElementById('uiBackCropBtn').innerText = t.cropBtn;
+      document.getElementById('uiA4PreviewTitle').innerText = t.a4PreviewTitle;
+      document.getElementById('uiA4PreviewSub').innerText = t.a4PreviewSub;
+      document.getElementById('uiA4LayoutDesc').innerText = t.a4LayoutDesc;
+      document.getElementById('uiUploadDocTitle').innerText = t.uploadDocTitle;
+      document.getElementById('uiUploadDocSub').innerText = t.uploadDocSub;
+      document.getElementById('uiFilterLabel').innerText = t.filterLabel;
+      document.getElementById('uiFilterSub').innerText = t.filterSub;
+      document.getElementById('uiFilterBwTitle').innerText = t.filterBwTitle;
+      document.getElementById('uiFilterBwSub').innerText = t.filterBwSub;
+      document.getElementById('uiFilterColorTitle').innerText = t.filterColorTitle;
+      document.getElementById('uiFilterColorSub').innerText = t.filterColorSub;
+      document.getElementById('uiFilterOrigTitle').innerText = t.filterOrigTitle;
+      document.getElementById('uiFilterOrigSub').innerText = t.filterOrigSub;
+      document.getElementById('uiCopiesLabel').innerText = t.copiesLabel;
+      document.getElementById('uiColorModeLabel').innerText = t.colorModeLabel;
+      document.getElementById('btnBw').innerText = t.btnBw;
+      document.getElementById('btnColor').innerText = t.btnColor;
+      document.getElementById('btnText').innerText = t.submitBtn;
+      document.getElementById('uiPrivacyFooter').innerText = t.privacyFooter;
+      document.getElementById('uiSuccessTitle').innerText = t.successTitle;
+      document.getElementById('uiSuccessSub').innerText = t.successSub;
+      document.getElementById('uiResCustomerLabel').innerText = t.resCustomerLabel;
+      document.getElementById('uiResDetailsLabel').innerText = t.resDetailsLabel;
+      document.getElementById('uiResStatusLabel').innerText = t.resStatusLabel;
+      document.getElementById('uiResStatusVal').innerText = t.resStatusVal;
+      document.getElementById('uiPrintAnotherBtn').innerText = t.printAnotherBtn;
+      document.getElementById('uiCropHeader').innerText = t.cropHeader;
+      document.getElementById('uiCropAutoBtn').innerText = t.cropAutoBtn;
+      document.getElementById('uiCropResetBtn').innerText = t.cropResetBtn;
+      document.getElementById('uiCropApplyBtn').innerText = t.cropApplyBtn;
+      if (document.getElementById('uiFrontChangeBtn')) document.getElementById('uiFrontChangeBtn').innerText = t.btnChange;
+      if (document.getElementById('uiBackChangeBtn')) document.getElementById('uiBackChangeBtn').innerText = t.btnChange;
+
+      updateA4Canvas();
+    }
+
+    function toggleLanguage() {
+      applyLanguage(currentLang === 'en' ? 'hi' : 'en');
+    }
+
+    // -------------------------------------------------------------
+    // Form and Mode State
+    // -------------------------------------------------------------
+    let currentMode = 'card';
+    let cardLayout = 'both'; // 'both' | 'front_only' | 'back_only'
+    let cardPlacement = 'top'; // 'top' | 'center'
+    let paperSize = 'A4'; // 'A4' | 'Legal' | '4x6'
+    let orientation = 'portrait'; // 'portrait' | 'landscape'
+    let docSides = 'single'; // 'single' | 'double'
+    let copies = 1;
+    let colorMode = 'bw';
+    let docFilter = 'bw'; // 'bw' | 'color' | 'original'
+
+    function setCardLayout(layout) {
+      cardLayout = layout;
+      document.getElementById('layoutBoth').classList.toggle('active', layout === 'both');
+      document.getElementById('layoutFront').classList.toggle('active', layout === 'front_only');
+      document.getElementById('layoutBack').classList.toggle('active', layout === 'back_only');
+
+      const frontBox = document.getElementById('frontBox');
+      const backBox = document.getElementById('backBox');
+      const grid = document.getElementById('cardUploadGrid');
+
+      if (layout === 'front_only') {
+        frontBox.style.display = 'flex';
+        backBox.style.display = 'none';
+        grid.style.gridTemplateColumns = '1fr';
+      } else if (layout === 'back_only') {
+        frontBox.style.display = 'none';
+        backBox.style.display = 'flex';
+        grid.style.gridTemplateColumns = '1fr';
+      } else {
+        frontBox.style.display = 'flex';
+        backBox.style.display = 'flex';
+        grid.style.gridTemplateColumns = '1fr 1fr';
+      }
+      updateA4Canvas();
+    }
+
+    function setPlacement(place) {
+      cardPlacement = place;
+      document.getElementById('placeTop').classList.toggle('active', place === 'top');
+      document.getElementById('placeCenter').classList.toggle('active', place === 'center');
+      updateA4Canvas();
+    }
+
+    function changePaperSize(val) {
+      paperSize = val;
+      updateA4Canvas();
+    }
+
+    function setOrientation(orient) {
+      orientation = orient;
+      document.getElementById('btnPortrait').classList.toggle('active', orient === 'portrait');
+      document.getElementById('btnLandscape').classList.toggle('active', orient === 'landscape');
+      updateA4Canvas();
+    }
+
+    function setDocSides(sides) {
+      docSides = sides;
+      document.getElementById('sideSingle').classList.toggle('active', sides === 'single');
+      document.getElementById('sideDouble').classList.toggle('active', sides === 'double');
+    }
+
+    let selectedFile = null;
+    let docImageObj = null;
+
+    let frontOriginal = null;
+    let frontProcessed = null;
+    let frontRotation = 0;
+
+    let backOriginal = null;
+    let backProcessed = null;
+    let backRotation = 0;
+
+    // Crop state
+    let activeCropTarget = null; // 'front' | 'back' | 'doc'
+    let cropImgSource = null;
+    let cropCorners = []; // [{x, y}, {x, y}, {x, y}, {x, y}] (tl, tr, br, bl)
+    let activePinIndex = -1;
+
+    function switchMode(mode) {
+      currentMode = mode;
+      document.getElementById('tabCard').classList.toggle('active', mode === 'card');
+      document.getElementById('tabDoc').classList.toggle('active', mode === 'doc');
+      document.getElementById('cardSection').style.display = mode === 'card' ? 'block' : 'none';
+      document.getElementById('docSection').style.display = mode === 'doc' ? 'block' : 'none';
+      if (mode === 'card') updateA4Canvas();
+    }
+
+    function changeCopies(delta) {
+      copies = Math.max(1, Math.min(99, copies + delta));
+      document.getElementById('copiesVal').innerText = copies;
+    }
+
+    function setColorMode(mode) {
+      colorMode = mode;
+      document.getElementById('btnBw').classList.toggle('active', mode === 'bw');
+      document.getElementById('btnColor').classList.toggle('active', mode === 'color');
+    }
+
+    function setDocFilter(filter) {
+      docFilter = filter;
+      document.getElementById('filterBw').classList.toggle('active', filter === 'bw');
+      document.getElementById('filterColor').classList.toggle('active', filter === 'color');
+      document.getElementById('filterOrig').classList.toggle('active', filter === 'original');
+
+      if (frontOriginal) processCardImage('front');
+      if (backOriginal) processCardImage('back');
+      if (docImageObj) processDocImage();
+    }
+
+    // -------------------------------------------------------------
+    // Adobe Scan Local Adaptive Threshold & Shadow Removal Filter
+    // -------------------------------------------------------------
+    function applyAdobeScanFilter(canvas, filterType) {
+      if (filterType === 'original') return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+
+      const len = w * h;
+      const gray = new Uint8Array(len);
+      for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+        gray[j] = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+      }
+
+      // Fast Summed Area Table (Integral Image) for O(1) local mean
+      const rowW = w + 1;
+      const integral = new Float64Array(rowW * (h + 1));
+      for (let y = 0; y < h; y++) {
+        let rowSum = 0;
+        const yRow = (y + 1) * rowW;
+        const prevYRow = y * rowW;
+        const gRow = y * w;
+        for (let x = 0; x < w; x++) {
+          rowSum += gray[gRow + x];
+          integral[yRow + x + 1] = integral[prevYRow + x + 1] + rowSum;
+        }
+      }
+
+      const radius = Math.max(14, Math.min(36, Math.round(Math.min(w, h) / 32)));
+
+      for (let y = 0; y < h; y++) {
+        const y0 = Math.max(0, y - radius);
+        const y1 = Math.min(h, y + radius + 1);
+        const gRow = y * w;
+        const dRow = gRow * 4;
+
+        for (let x = 0; x < w; x++) {
+          const x0 = Math.max(0, x - radius);
+          const x1 = Math.min(w, x + radius + 1);
+          const count = (x1 - x0) * (y1 - y0);
+
+          const sum = integral[y1 * rowW + x1] - integral[y0 * rowW + x1] - integral[y1 * rowW + x0] + integral[y0 * rowW + x0];
+          const localMean = sum / count;
+
+          const idx = dRow + (x * 4);
+          const g = gray[gRow + x];
+          const ratio = g / (localMean + 1e-4);
+
+          if (filterType === 'bw') {
+            let val;
+            if (ratio >= 0.88) {
+              val = 255;
+            } else if (ratio <= 0.65) {
+              val = Math.max(0, Math.round((ratio / 0.65) * 45));
+            } else {
+              val = Math.round(45 + ((ratio - 0.65) / 0.23) * 210);
+            }
+            data[idx] = val;
+            data[idx + 1] = val;
+            data[idx + 2] = val;
+          } else if (filterType === 'color') {
+            const factor = ratio >= 0.88 ? (255 / Math.max(1, g)) : Math.min(1.4, 1.0 / Math.max(0.45, ratio));
+            data[idx] = Math.min(255, Math.round(data[idx] * factor));
+            data[idx + 1] = Math.min(255, Math.round(data[idx + 1] * factor));
+            data[idx + 2] = Math.min(255, Math.round(data[idx + 2] * factor));
+          }
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // Process Card Image with Rotation & Filter
+    function processCardImage(side) {
+      const orig = side === 'front' ? frontOriginal : backOriginal;
+      const rot = side === 'front' ? frontRotation : backRotation;
+      if (!orig) return;
+
+      const canvas = document.createElement('canvas');
+      const is90 = (rot === 90 || rot === 270);
+      canvas.width = is90 ? orig.height : orig.width;
+      canvas.height = is90 ? orig.width : orig.height;
+      const ctx = canvas.getContext('2d');
+
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((rot * Math.PI) / 180);
+      ctx.drawImage(orig, -orig.width / 2, -orig.height / 2);
+
+      applyAdobeScanFilter(canvas, docFilter);
+
+      const resImg = new Image();
+      resImg.onload = () => {
+        if (side === 'front') {
+          frontProcessed = resImg;
+          document.getElementById('frontImg').src = resImg.src;
+        } else {
+          backProcessed = resImg;
+          document.getElementById('backImg').src = resImg.src;
+        }
+        updateA4Canvas();
+      };
+      resImg.src = canvas.toDataURL('image/jpeg', 0.95);
+    }
+
+    // Card Side File Input
+    const frontInput = document.getElementById('frontInput');
+    const backInput = document.getElementById('backInput');
+    frontInput.addEventListener('change', (e) => loadCardFile(e, 'front'));
+    backInput.addEventListener('change', (e) => loadCardFile(e, 'back'));
+
+    function triggerFileInput(side, e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const input = document.getElementById(side + 'Input');
+      if (input) {
+        input.style.pointerEvents = 'auto';
+        input.click();
+      }
+    }
+
+    function loadCardFile(e, side) {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          // Normalize dimension to max 1800px to ensure snappy performance on mobile
+          const maxD = 1800;
+          let finalImg = img;
+          if (img.width > maxD || img.height > maxD) {
+            const s = maxD / Math.max(img.width, img.height);
+            const dc = document.createElement('canvas');
+            dc.width = Math.round(img.width * s);
+            dc.height = Math.round(img.height * s);
+            dc.getContext('2d').drawImage(img, 0, 0, dc.width, dc.height);
+            finalImg = dc;
+          }
+
+          if (side === 'front') {
+            frontOriginal = finalImg;
+            frontRotation = 0;
+            document.getElementById('frontPlaceholder').style.display = 'none';
+            document.getElementById('frontImg').style.display = 'block';
+            document.getElementById('frontActions').style.display = 'flex';
+            document.getElementById('frontInput').style.pointerEvents = 'none';
+          } else {
+            backOriginal = finalImg;
+            backRotation = 0;
+            document.getElementById('backPlaceholder').style.display = 'none';
+            document.getElementById('backImg').style.display = 'block';
+            document.getElementById('backActions').style.display = 'flex';
+            document.getElementById('backInput').style.pointerEvents = 'none';
+          }
+          processCardImage(side);
+          // Automatically launch precision Adobe Scan 4-corner crop modal
+          openCropModal(side);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    }
+
+    function rotateCard(side, e) {
+      e.stopPropagation();
+      if (side === 'front') {
+        frontRotation = (frontRotation + 90) % 360;
+        processCardImage('front');
+      } else {
+        backRotation = (backRotation + 90) % 360;
+        processCardImage('back');
+      }
+    }
+
+    // Normal Document File Input
+    const fileInput = document.getElementById('fileInput');
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      selectedFile = file;
+      document.getElementById('fileName').innerText = file.name;
+      const metaEl = document.getElementById('fileMeta');
+      if (metaEl) {
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+        metaEl.innerText = `${sizeMb} MB · Ready to print`;
+      }
+      document.getElementById('filePreviewBox').style.display = 'flex';
+      document.getElementById('uploadBox').style.display = 'none';
+
+      const thumb = document.getElementById('docPreviewThumb');
+      const pdfIcon = document.getElementById('docIconPdf');
+
+      if (file.type.startsWith('image/')) {
+        document.getElementById('docCropBtn').style.display = 'inline-block';
+        if (pdfIcon) pdfIcon.style.display = 'none';
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          if (thumb) {
+            thumb.src = ev.target.result;
+            thumb.style.display = 'block';
+          }
+          const img = new Image();
+          img.onload = () => {
+            const maxD = 1800;
+            let finalImg = img;
+            if (img.width > maxD || img.height > maxD) {
+              const s = maxD / Math.max(img.width, img.height);
+              const dc = document.createElement('canvas');
+              dc.width = Math.round(img.width * s);
+              dc.height = Math.round(img.height * s);
+              dc.getContext('2d').drawImage(img, 0, 0, dc.width, dc.height);
+              finalImg = dc;
+            }
+            docImageObj = finalImg;
+            processDocImage();
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      } else {
+        document.getElementById('docCropBtn').style.display = 'none';
+        if (thumb) {
+          thumb.src = '';
+          thumb.style.display = 'none';
+        }
+        if (pdfIcon) pdfIcon.style.display = 'block';
+        docImageObj = null;
+      }
+      e.target.value = '';
+    });
+
+    function processDocImage() {
+      if (!docImageObj) return;
+      const canvas = document.createElement('canvas');
+      canvas.width = docImageObj.width;
+      canvas.height = docImageObj.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(docImageObj, 0, 0);
+      applyAdobeScanFilter(canvas, docFilter);
+      canvas.toBlob((blob) => {
+        if (blob) {
+          selectedFile = new File([blob], selectedFile.name, { type: 'image/jpeg' });
+        }
+      }, 'image/jpeg', 0.95);
+    }
+
+    function clearFile() {
+      selectedFile = null;
+      docImageObj = null;
+      fileInput.value = '';
+      const thumb = document.getElementById('docPreviewThumb');
+      if (thumb) {
+        thumb.src = '';
+        thumb.style.display = 'none';
+      }
+      const pdfIcon = document.getElementById('docIconPdf');
+      if (pdfIcon) pdfIcon.style.display = 'none';
+      document.getElementById('filePreviewBox').style.display = 'none';
+      document.getElementById('uploadBox').style.display = 'block';
+    }
+
+    // -------------------------------------------------------------
+    // A4 Xerox Sheet Auto-Layout (Customizable Layout & Placement)
+    // -------------------------------------------------------------
+    function updateA4Canvas() {
+      const canvas = document.getElementById('a4Canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const isLandscape = orientation === 'landscape';
+
+      // Canvas dimensions based on paper size & orientation
+      let baseW = 595, baseH = 842;
+      if (paperSize === 'Legal') {
+        baseW = 595; baseH = 1008;
+      } else if (paperSize === '4x6') {
+        baseW = 400; baseH = 600;
+      }
+      canvas.width = isLandscape ? baseH : baseW;
+      canvas.height = isLandscape ? baseW : baseH;
+
+      const w = canvas.width;
+      const h = canvas.height;
+      const t = I18N[currentLang];
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+
+      // Standard CR80 Size: 85.60 mm x 53.98 mm (~1.586 ratio)
+      const refW = isLandscape ? baseH : baseW;
+      const cardW = Math.round(refW * (85.60 / 210.0));
+      const cardH = Math.round(cardW / 1.586);
+      const cardGap = Math.round(h * 0.03);
+
+      if (cardLayout === 'both') {
+        const totalCardsH = (cardH * 2) + cardGap;
+        const startY = cardPlacement === 'center' ? Math.max(10, Math.round((h - totalCardsH) / 2)) : Math.round(h * 0.045);
+        const cardX = Math.round((w - cardW) / 2);
+
+        drawCardSlot(ctx, frontProcessed, cardX, startY, cardW, cardH, t.frontCardPlaceholder);
+        drawCardSlot(ctx, backProcessed, cardX, startY + cardH + cardGap, cardW, cardH, t.backCardPlaceholder);
+      } else if (cardLayout === 'front_only') {
+        const startY = cardPlacement === 'center' ? Math.max(10, Math.round((h - cardH) / 2)) : Math.round(h * 0.045);
+        const cardX = Math.round((w - cardW) / 2);
+        drawCardSlot(ctx, frontProcessed, cardX, startY, cardW, cardH, t.frontCardPlaceholder);
+      } else if (cardLayout === 'back_only') {
+        const startY = cardPlacement === 'center' ? Math.max(10, Math.round((h - cardH) / 2)) : Math.round(h * 0.045);
+        const cardX = Math.round((w - cardW) / 2);
+        drawCardSlot(ctx, backProcessed, cardX, startY, cardW, cardH, t.backCardPlaceholder);
+      }
+
+      // Faint guideline indicating upper half divider if top placement and portrait
+      if (cardPlacement === 'top' && !isLandscape && cardLayout === 'both') {
+        ctx.save();
+        ctx.strokeStyle = '#f1f5f9';
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(20, h / 2);
+        ctx.lineTo(w - 20, h / 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    function drawCardSlot(ctx, img, x, y, w, h, label) {
+      ctx.save();
+      if (!img) {
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 1.2;
+        ctx.fillStyle = '#f8fafc';
+        roundRect(ctx, x, y, w, h, 6, true, true);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, x + w / 2, y + h / 2 + 4);
+      } else {
+        roundRect(ctx, x, y, w, h, 6, false, false);
+        ctx.clip();
+        ctx.drawImage(img, x, y, w, h);
+        ctx.restore();
+
+        ctx.save();
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 0.8;
+        roundRect(ctx, x, y, w, h, 6, false, true);
+      }
+      ctx.restore();
+    }
+
+    function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+      if (fill) ctx.fill();
+      if (stroke) ctx.stroke();
+    }
+
+    // -------------------------------------------------------------
+    // Adobe Scan Interactive 4-Corner Cropping Modal & Auto-Detect
+    // -------------------------------------------------------------
+    const cropModal = document.getElementById('cropModal');
+    const cropCanvas = document.getElementById('cropCanvas');
+    const cropCtx = cropCanvas.getContext('2d');
+    const cropLoupe = document.getElementById('cropLoupe');
+    const loupeCanvas = document.getElementById('loupeCanvas');
+    const loupeCtx = loupeCanvas.getContext('2d');
+
+    function openCropModal(target, e) {
+      if (e) e.stopPropagation();
+      activeCropTarget = target;
+      if (target === 'front') cropImgSource = frontOriginal;
+      else if (target === 'back') cropImgSource = backOriginal;
+      else if (target === 'doc') cropImgSource = docImageObj;
+      if (!cropImgSource) return;
+
+      cropCanvas.width = cropImgSource.width;
+      cropCanvas.height = cropImgSource.height;
+      cropModal.style.display = 'flex';
+
+      // Automatically run auto-detect on modal open!
+      autoDetectCorners();
+    }
+
+    function closeCropModal() {
+      cropModal.style.display = 'none';
+      hideLoupe();
+    }
+
+    let activeEdgeIndex = -1;
+    let dragStartPos = null;
+    let dragStartCorners = null;
+
+    function resetCropCorners() {
+      const w = cropCanvas.width;
+      const h = cropCanvas.height;
+      const mX = Math.round(w * 0.05);
+      const mY = Math.round(h * 0.05);
+      cropCorners = [
+        { x: mX, y: mY },
+        { x: w - mX, y: mY },
+        { x: w - mX, y: h - mY },
+        { x: mX, y: h - mY },
+      ];
+      drawCropCanvas();
+    }
+
+    // -------------------------------------------------------------
+    // Adobe Scan Precision 4-Corner Quad & Card Edge Detection
+    // 1. Grayscale & Separable 5x5 GaussianBlur
+    // 2. Sobel Gradients, NMS & Canny Double Thresholding (75, 200)
+    // 3. Morphological Closing (Dilate 5x5 + Erode 5x5)
+    // 4. Contour Boundary Extraction, Convex Hull & approxPolyDP
+    // 5. Quad Ordering (TL, TR, BR, BL) & Geometric Validation
+    // -------------------------------------------------------------
+    function autoDetectCorners() {
+      const srcW = cropCanvas.width;
+      const srcH = cropCanvas.height;
+
+      // Analysis thumbnail (~420px max dimension for instant 20ms processing)
+      const maxDim = 420;
+      const scale = Math.min(1, maxDim / Math.max(srcW, srcH));
+      const tw = Math.max(50, Math.round(srcW * scale));
+      const th = Math.max(50, Math.round(srcH * scale));
+
+      const aCanvas = document.createElement('canvas');
+      aCanvas.width = tw;
+      aCanvas.height = th;
+      const aCtx = aCanvas.getContext('2d');
+      aCtx.drawImage(cropImgSource, 0, 0, tw, th);
+      const imgData = aCtx.getImageData(0, 0, tw, th);
+      const d = imgData.data;
+
+      // 1. Grayscale conversion
+      const rawGray = new Uint8Array(tw * th);
+      for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+        rawGray[j] = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]);
+      }
+
+      // Separable 5x5 Gaussian Blur: [1, 4, 6, 4, 1] / 16
+      const tempBlur = new Float32Array(tw * th);
+      const blur = new Uint8Array(tw * th);
+      const k5 = [1, 4, 6, 4, 1];
+
+      for (let y = 0; y < th; y++) {
+        const row = y * tw;
+        for (let x = 0; x < tw; x++) {
+          let sum = 0, kw = 0;
+          for (let i = -2; i <= 2; i++) {
+            const px = Math.min(tw - 1, Math.max(0, x + i));
+            const w = k5[i + 2];
+            sum += rawGray[row + px] * w;
+            kw += w;
+          }
+          tempBlur[row + x] = sum / kw;
+        }
+      }
+
+      for (let y = 0; y < th; y++) {
+        for (let x = 0; x < tw; x++) {
+          let sum = 0, kw = 0;
+          for (let j = -2; j <= 2; j++) {
+            const py = Math.min(th - 1, Math.max(0, y + j));
+            const w = k5[j + 2];
+            sum += tempBlur[py * tw + x] * w;
+            kw += w;
+          }
+          blur[y * tw + x] = Math.round(sum / kw);
+        }
+      }
+
+      // 2. Sobel Gradients
+      const gxArr = new Int32Array(tw * th);
+      const gyArr = new Int32Array(tw * th);
+      const mag = new Float32Array(tw * th);
+      let maxMag = 0;
+
+      for (let y = 1; y < th - 1; y++) {
+        const row = y * tw;
+        const prev = (y - 1) * tw;
+        const next = (y + 1) * tw;
+        for (let x = 1; x < tw - 1; x++) {
+          const gx = -blur[prev + x - 1] + blur[prev + x + 1]
+                     - 2 * blur[row + x - 1] + 2 * blur[row + x + 1]
+                     - blur[next + x - 1] + blur[next + x + 1];
+          const gy = -blur[prev + x - 1] - 2 * blur[prev + x] - blur[prev + x + 1]
+                     + blur[next + x - 1] + 2 * blur[next + x] + blur[next + x + 1];
+          gxArr[row + x] = gx;
+          gyArr[row + x] = gy;
+          const m = Math.hypot(gx, gy);
+          mag[row + x] = m;
+          if (m > maxMag) maxMag = m;
+        }
+      }
+
+      // Non-Maximum Suppression (NMS)
+      const nms = new Float32Array(tw * th);
+      for (let y = 1; y < th - 1; y++) {
+        const row = y * tw;
+        for (let x = 1; x < tw - 1; x++) {
+          const m = mag[row + x];
+          if (m < 5) continue;
+          const gx = gxArr[row + x];
+          const gy = gyArr[row + x];
+          let angle = Math.atan2(gy, gx) * (180 / Math.PI);
+          if (angle < 0) angle += 180;
+
+          let q0 = 0, q1 = 0;
+          if ((angle >= 0 && angle < 22.5) || (angle >= 157.5 && angle <= 180)) {
+            q0 = mag[row + x + 1];
+            q1 = mag[row + x - 1];
+          } else if (angle >= 22.5 && angle < 67.5) {
+            q0 = mag[(y + 1) * tw + x + 1];
+            q1 = mag[(y - 1) * tw + x - 1];
+          } else if (angle >= 67.5 && angle < 112.5) {
+            q0 = mag[(y + 1) * tw + x];
+            q1 = mag[(y - 1) * tw + x];
+          } else if (angle >= 112.5 && angle < 157.5) {
+            q0 = mag[(y + 1) * tw + x - 1];
+            q1 = mag[(y - 1) * tw + x + 1];
+          }
+
+          if (m >= q0 && m >= q1) {
+            nms[row + x] = m;
+          }
+        }
+      }
+
+      // Canny Hysteresis Thresholding (low: 75, high: 200 scaled to max gradient)
+      const lowThresh = Math.max(14, maxMag * (75 / 255));
+      const highThresh = Math.max(35, maxMag * (200 / 255));
+      const edges = new Uint8Array(tw * th);
+      const edgeStack = [];
+
+      for (let y = 1; y < th - 1; y++) {
+        const row = y * tw;
+        for (let x = 1; x < tw - 1; x++) {
+          const val = nms[row + x];
+          if (val >= highThresh) {
+            edges[row + x] = 2; // Strong edge
+            edgeStack.push(row + x);
+          } else if (val >= lowThresh) {
+            edges[row + x] = 1; // Weak edge
+          }
+        }
+      }
+
+      while (edgeStack.length > 0) {
+        const idx = edgeStack.pop();
+        const cx = idx % tw;
+        const cy = Math.floor(idx / tw);
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = cx + dx, ny = cy + dy;
+            if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
+              const nIdx = ny * tw + nx;
+              if (edges[nIdx] === 1) {
+                edges[nIdx] = 2;
+                edgeStack.push(nIdx);
+              }
+            }
+          }
+        }
+      }
+
+      // 3. Morphological Closing (Dilate 5x5, then Erode 5x5)
+      const binEdges = new Uint8Array(tw * th);
+      for (let i = 0; i < edges.length; i++) {
+        binEdges[i] = edges[i] === 2 ? 1 : 0;
+      }
+
+      const dilated = new Uint8Array(tw * th);
+      for (let y = 2; y < th - 2; y++) {
+        for (let x = 2; x < tw - 2; x++) {
+          let hit = 0;
+          for (let dy = -2; dy <= 2 && !hit; dy++) {
+            for (let dx = -2; dx <= 2; dx++) {
+              if (binEdges[(y + dy) * tw + (x + dx)] === 1) { hit = 1; break; }
+            }
+          }
+          dilated[y * tw + x] = hit;
+        }
+      }
+
+      const closed = new Uint8Array(tw * th);
+      for (let y = 2; y < th - 2; y++) {
+        for (let x = 2; x < tw - 2; x++) {
+          let allOn = 1;
+          for (let dy = -2; dy <= 2 && allOn; dy++) {
+            for (let dx = -2; dx <= 2; dx++) {
+              if (dilated[(y + dy) * tw + (x + dx)] === 0) { allOn = 0; break; }
+            }
+          }
+          closed[y * tw + x] = allOn;
+        }
+      }
+
+      // 4. Contour Boundary Extraction
+      const visited = new Uint8Array(tw * th);
+      const candidateContours = [];
+      const minContourLen = Math.round((tw + th) * 0.22);
+
+      for (let y = 2; y < th - 2; y++) {
+        for (let x = 2; x < tw - 2; x++) {
+          const idx = y * tw + x;
+          if (closed[idx] === 1 && !visited[idx]) {
+            const pts = [];
+            const q = [idx];
+            visited[idx] = 1;
+            while (q.length > 0) {
+              const curr = q.pop();
+              const cx = curr % tw;
+              const cy = Math.floor(curr / tw);
+              pts.push({ x: cx, y: cy });
+
+              for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                  if (dx === 0 && dy === 0) continue;
+                  const nx = cx + dx, ny = cy + dy;
+                  if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
+                    const nIdx = ny * tw + nx;
+                    if (closed[nIdx] === 1 && !visited[nIdx]) {
+                      visited[nIdx] = 1;
+                      q.push(nIdx);
+                    }
+                  }
+                }
+              }
+            }
+            if (pts.length >= minContourLen) {
+              candidateContours.push(pts);
+            }
+          }
+        }
+      }
+
+      candidateContours.sort((a, b) => b.length - a.length);
+
+      // Monotone Chain 2D Convex Hull
+      function getConvexHull(points) {
+        if (points.length <= 3) return points.slice();
+        const sorted = points.slice().sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x);
+        const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+        const lower = [];
+        for (let p of sorted) {
+          while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+          lower.push(p);
+        }
+        const upper = [];
+        for (let i = sorted.length - 1; i >= 0; i--) {
+          const p = sorted[i];
+          while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+          upper.push(p);
+        }
+        lower.pop();
+        upper.pop();
+        return lower.concat(upper);
+      }
+
+      // Ramer-Douglas-Peucker (approxPolyDP)
+      function approxPolyDP(pts, eps) {
+        if (pts.length <= 2) return pts.slice();
+        let maxD = 0, maxIdx = 0;
+        const p1 = pts[0], p2 = pts[pts.length - 1];
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const len = Math.hypot(dx, dy);
+
+        for (let i = 1; i < pts.length - 1; i++) {
+          const d = len < 1e-5 ? Math.hypot(pts[i].x - p1.x, pts[i].y - p1.y) : Math.abs((pts[i].x - p1.x) * dy - (pts[i].y - p1.y) * dx) / len;
+          if (d > maxD) { maxD = d; maxIdx = i; }
+        }
+
+        if (maxD > eps) {
+          const r1 = approxPolyDP(pts.slice(0, maxIdx + 1), eps);
+          const r2 = approxPolyDP(pts.slice(maxIdx), eps);
+          return r1.slice(0, -1).concat(r2);
+        }
+        return [p1, p2];
+      }
+
+      function getPolyPerimeter(pts) {
+        let p = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const p1 = pts[i], p2 = pts[(i + 1) % pts.length];
+          p += Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        }
+        return p;
+      }
+
+      function getShoelaceArea(pts) {
+        let a = 0;
+        for (let i = 0; i < pts.length; i++) {
+          const j = (i + 1) % pts.length;
+          a += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+        }
+        return Math.abs(a) / 2;
+      }
+
+      let detectedCorners = null;
+      const minArea = tw * th * 0.10; // Card must be at least 10% of frame area
+
+      for (const cnt of candidateContours) {
+        const hull = getConvexHull(cnt);
+        if (hull.length < 4) continue;
+        const perim = getPolyPerimeter(hull);
+
+        // Sweep epsilon from 0.015 to 0.055 of perimeter
+        for (let epsRatio = 0.015; epsRatio <= 0.055; epsRatio += 0.005) {
+          const closedHull = hull.concat([hull[0]]);
+          const approx = approxPolyDP(closedHull, perim * epsRatio);
+          if (approx.length > 1 && approx[0].x === approx[approx.length - 1].x && approx[0].y === approx[approx.length - 1].y) {
+            approx.pop();
+          }
+
+          if (approx.length === 4) {
+            const area = getShoelaceArea(approx);
+            if (area >= minArea) {
+              // Order 4 corners: TL, TR, BR, BL
+              let tl = approx[0], br = approx[0], tr = approx[0], bl = approx[0];
+              let minSum = Infinity, maxSum = -Infinity;
+              let minDiff = Infinity, maxDiff = -Infinity;
+              for (const p of approx) {
+                const sum = p.x + p.y;
+                const diff = p.y - p.x;
+                if (sum < minSum) { minSum = sum; tl = p; }
+                if (sum > maxSum) { maxSum = sum; br = p; }
+                if (diff < minDiff) { minDiff = diff; tr = p; }
+                if (diff > maxDiff) { maxDiff = diff; bl = p; }
+              }
+
+              // Verify convexity & reasonable edge dimensions
+              const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+              const botW = Math.hypot(br.x - bl.x, br.y - bl.y);
+              const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+              const rightH = Math.hypot(br.x - tr.x, br.y - tr.y);
+
+              if (topW > tw * 0.20 && botW > tw * 0.20 && leftH > th * 0.15 && rightH > th * 0.15) {
+                const inv = 1 / scale;
+                detectedCorners = [
+                  { x: Math.max(0, Math.min(srcW, Math.round(tl.x * inv))), y: Math.max(0, Math.min(srcH, Math.round(tl.y * inv))) },
+                  { x: Math.max(0, Math.min(srcW, Math.round(tr.x * inv))), y: Math.max(0, Math.min(srcH, Math.round(tr.y * inv))) },
+                  { x: Math.max(0, Math.min(srcW, Math.round(br.x * inv))), y: Math.max(0, Math.min(srcH, Math.round(br.y * inv))) },
+                  { x: Math.max(0, Math.min(srcW, Math.round(bl.x * inv))), y: Math.max(0, Math.min(srcH, Math.round(bl.y * inv))) }
+                ];
+                break;
+              }
+            }
+          }
+        }
+        if (detectedCorners) break;
+      }
+
+      if (detectedCorners) {
+        cropCorners = detectedCorners;
+      } else {
+        // Fallback: standard CR80 aspect ratio centered quad (with 8% margin)
+        const marginX = Math.round(srcW * 0.08);
+        const cardW = srcW - 2 * marginX;
+        const cardH = Math.round(cardW / 1.58577);
+        const startY = Math.max(0, Math.round((srcH - cardH) / 2));
+        cropCorners = [
+          { x: marginX, y: startY },
+          { x: marginX + cardW, y: startY },
+          { x: marginX + cardW, y: Math.min(srcH, startY + cardH) },
+          { x: marginX, y: Math.min(srcH, startY + cardH) }
+        ];
+      }
+
+      drawCropCanvas();
+    }
+
+    function getEdgeMidpoint(idx) {
+      const p1 = cropCorners[idx];
+      const p2 = cropCorners[(idx + 1) % 4];
+      return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    }
+
+    function drawCropCanvas() {
+      if (!cropImgSource) return;
+      cropCtx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+      cropCtx.drawImage(cropImgSource, 0, 0);
+
+      // Darken outside quadrilateral
+      cropCtx.save();
+      cropCtx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      cropCtx.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+
+      // Cut out quad
+      cropCtx.globalCompositeOperation = 'destination-out';
+      cropCtx.beginPath();
+      cropCtx.moveTo(cropCorners[0].x, cropCorners[0].y);
+      cropCtx.lineTo(cropCorners[1].x, cropCorners[1].y);
+      cropCtx.lineTo(cropCorners[2].x, cropCorners[2].y);
+      cropCtx.lineTo(cropCorners[3].x, cropCorners[3].y);
+      cropCtx.closePath();
+      cropCtx.fill();
+      cropCtx.restore();
+
+      // Draw faint interior alignment grid (Rule of Thirds)
+      cropCtx.save();
+      cropCtx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+      cropCtx.lineWidth = 1.5;
+      const [tl, tr, br, bl] = cropCorners;
+      for (let t = 1; t <= 2; t++) {
+        const frac = t / 3;
+        // Horizontal grid
+        const lx = tl.x + (bl.x - tl.x) * frac;
+        const ly = tl.y + (bl.y - tl.y) * frac;
+        const rx = tr.x + (br.x - tr.x) * frac;
+        const ry = tr.y + (br.y - tr.y) * frac;
+        cropCtx.beginPath();
+        cropCtx.moveTo(lx, ly);
+        cropCtx.lineTo(rx, ry);
+        cropCtx.stroke();
+        // Vertical grid
+        const tx = tl.x + (tr.x - tl.x) * frac;
+        const ty = tl.y + (tr.y - tl.y) * frac;
+        const bx = bl.x + (br.x - bl.x) * frac;
+        const by = bl.y + (br.y - bl.y) * frac;
+        cropCtx.beginPath();
+        cropCtx.moveTo(tx, ty);
+        cropCtx.lineTo(bx, by);
+        cropCtx.stroke();
+      }
+      cropCtx.restore();
+
+      // Draw quad stroke outline
+      cropCtx.save();
+      cropCtx.strokeStyle = '#2563eb';
+      cropCtx.lineWidth = Math.max(3.5, Math.round(cropCanvas.width / 220));
+      cropCtx.beginPath();
+      cropCtx.moveTo(cropCorners[0].x, cropCorners[0].y);
+      cropCtx.lineTo(cropCorners[1].x, cropCorners[1].y);
+      cropCtx.lineTo(cropCorners[2].x, cropCorners[2].y);
+      cropCtx.lineTo(cropCorners[3].x, cropCorners[3].y);
+      cropCtx.closePath();
+      cropCtx.stroke();
+
+      // Draw 4 edge midpoint pill handles
+      const edgeRadius = Math.max(7, Math.round(cropCanvas.width / 110));
+      for (let e = 0; e < 4; e++) {
+        const mid = getEdgeMidpoint(e);
+        cropCtx.beginPath();
+        cropCtx.arc(mid.x, mid.y, edgeRadius, 0, Math.PI * 2);
+        cropCtx.fillStyle = e === activeEdgeIndex ? '#00f2fe' : '#ffffff';
+        cropCtx.fill();
+        cropCtx.lineWidth = 2.5;
+        cropCtx.strokeStyle = '#2563eb';
+        cropCtx.stroke();
+      }
+
+      // Draw 4 circular pin handles
+      const pinRadius = Math.max(15, Math.round(cropCanvas.width / 50));
+      cropCorners.forEach((pt, idx) => {
+        cropCtx.beginPath();
+        cropCtx.arc(pt.x, pt.y, pinRadius, 0, Math.PI * 2);
+        cropCtx.fillStyle = '#ffffff';
+        cropCtx.fill();
+        cropCtx.lineWidth = 4;
+        cropCtx.strokeStyle = idx === activePinIndex ? '#00f2fe' : '#2563eb';
+        cropCtx.stroke();
+
+        // Inner center dot
+        cropCtx.beginPath();
+        cropCtx.arc(pt.x, pt.y, pinRadius * 0.35, 0, Math.PI * 2);
+        cropCtx.fillStyle = idx === activePinIndex ? '#00f2fe' : '#2563eb';
+        cropCtx.fill();
+      });
+      cropCtx.restore();
+    }
+
+    // -------------------------------------------------------------
+    // Magnifying Loupe on Pin Drag
+    // -------------------------------------------------------------
+    function updateLoupe(screenX, screenY, cornerX, cornerY) {
+      if (!cropImgSource) return;
+      cropLoupe.style.display = 'block';
+
+      // Position loupe offset upwards so finger does not cover it
+      const loupeRadius = 55;
+      const loupeTop = Math.max(10, screenY - 140);
+      const loupeLeft = Math.max(10, Math.min(window.innerWidth - 120, screenX - loupeRadius));
+      cropLoupe.style.top = `${loupeTop}px`;
+      cropLoupe.style.left = `${loupeLeft}px`;
+
+      // 2.5x Zoom into corner point
+      const zoom = 2.5;
+      const lw = loupeCanvas.width;
+      const lh = loupeCanvas.height;
+      loupeCtx.clearRect(0, 0, lw, lh);
+
+      const srcSize = lw / zoom;
+      const sx = cornerX - srcSize / 2;
+      const sy = cornerY - srcSize / 2;
+
+      loupeCtx.drawImage(
+        cropImgSource,
+        sx, sy, srcSize, srcSize,
+        0, 0, lw, lh
+      );
+    }
+
+    function hideLoupe() {
+      cropLoupe.style.display = 'none';
+    }
+
+    // Touch / Mouse dragging with Screen-Pixel Touch Target
+    function getCanvasCoords(clientX, clientY) {
+      const rect = cropCanvas.getBoundingClientRect();
+      const scaleX = cropCanvas.width / rect.width;
+      const scaleY = cropCanvas.height / rect.height;
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+      };
+    }
+
+    function onPointerDown(e) {
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const rect = cropCanvas.getBoundingClientRect();
+      const scaleX = rect.width / cropCanvas.width;
+      const scaleY = rect.height / cropCanvas.height;
+
+      activePinIndex = -1;
+      activeEdgeIndex = -1;
+
+      // Check Corner Pins in Screen Pixels (generous 44px touch target)
+      const cornerTouchRadius = 44;
+      let minCornerDist = Infinity;
+      cropCorners.forEach((pt, idx) => {
+        const screenX = rect.left + pt.x * scaleX;
+        const screenY = rect.top + pt.y * scaleY;
+        const dist = Math.hypot(screenX - clientX, screenY - clientY);
+        if (dist < cornerTouchRadius && dist < minCornerDist) {
+          minCornerDist = dist;
+          activePinIndex = idx;
+        }
+      });
+
+      // If no corner touched, check Edge Midpoints (38px touch target)
+      if (activePinIndex === -1) {
+        const edgeTouchRadius = 38;
+        let minEdgeDist = Infinity;
+        for (let eIdx = 0; eIdx < 4; eIdx++) {
+          const mid = getEdgeMidpoint(eIdx);
+          const screenX = rect.left + mid.x * scaleX;
+          const screenY = rect.top + mid.y * scaleY;
+          const dist = Math.hypot(screenX - clientX, screenY - clientY);
+          if (dist < edgeTouchRadius && dist < minEdgeDist) {
+            minEdgeDist = dist;
+            activeEdgeIndex = eIdx;
+          }
+        }
+      }
+
+      if (activePinIndex !== -1) {
+        e.preventDefault();
+        updateLoupe(clientX, clientY, cropCorners[activePinIndex].x, cropCorners[activePinIndex].y);
+        drawCropCanvas();
+      } else if (activeEdgeIndex !== -1) {
+        e.preventDefault();
+        dragStartPos = getCanvasCoords(clientX, clientY);
+        dragStartCorners = cropCorners.map(p => ({ x: p.x, y: p.y }));
+        drawCropCanvas();
+      }
+    }
+
+    function onPointerMove(e) {
+      if (activePinIndex === -1 && activeEdgeIndex === -1) return;
+      e.preventDefault();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const pos = getCanvasCoords(clientX, clientY);
+
+      if (activePinIndex !== -1) {
+        cropCorners[activePinIndex].x = Math.max(0, Math.min(cropCanvas.width, pos.x));
+        cropCorners[activePinIndex].y = Math.max(0, Math.min(cropCanvas.height, pos.y));
+        updateLoupe(clientX, clientY, cropCorners[activePinIndex].x, cropCorners[activePinIndex].y);
+      } else if (activeEdgeIndex !== -1 && dragStartPos && dragStartCorners) {
+        const dx = pos.x - dragStartPos.x;
+        const dy = pos.y - dragStartPos.y;
+        const idx1 = activeEdgeIndex;
+        const idx2 = (activeEdgeIndex + 1) % 4;
+
+        cropCorners[idx1].x = Math.max(0, Math.min(cropCanvas.width, dragStartCorners[idx1].x + dx));
+        cropCorners[idx1].y = Math.max(0, Math.min(cropCanvas.height, dragStartCorners[idx1].y + dy));
+        cropCorners[idx2].x = Math.max(0, Math.min(cropCanvas.width, dragStartCorners[idx2].x + dx));
+        cropCorners[idx2].y = Math.max(0, Math.min(cropCanvas.height, dragStartCorners[idx2].y + dy));
+      }
+
+      drawCropCanvas();
+    }
+
+    // Magnetic Edge Snap on corner release
+    function snapCornerToEdge(cornerIdx) {
+      if (!cropImgSource) return;
+      const pt = cropCorners[cornerIdx];
+      const searchRadius = 24;
+      const minX = Math.max(2, Math.round(pt.x - searchRadius));
+      const maxX = Math.min(cropCanvas.width - 3, Math.round(pt.x + searchRadius));
+      const minY = Math.max(2, Math.round(pt.y - searchRadius));
+      const maxY = Math.min(cropCanvas.height - 3, Math.round(pt.y + searchRadius));
+      const w = maxX - minX + 1;
+      const h = maxY - minY + 1;
+      if (w <= 4 || h <= 4) return;
+
+      const pCanvas = document.createElement('canvas');
+      pCanvas.width = w;
+      pCanvas.height = h;
+      const pCtx = pCanvas.getContext('2d');
+      pCtx.drawImage(cropImgSource, minX, minY, w, h, 0, 0, w, h);
+      const pData = pCtx.getImageData(0, 0, w, h).data;
+
+      let bestX = pt.x;
+      let bestY = pt.y;
+      let maxG = 0;
+
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const getL = (px, py) => {
+            const i = (py * w + px) * 4;
+            return 0.299 * pData[i] + 0.587 * pData[i + 1] + 0.114 * pData[i + 2];
+          };
+          const gx = -getL(x - 1, y) + getL(x + 1, y);
+          const gy = -getL(x, y - 1) + getL(x, y + 1);
+          const g = Math.hypot(gx, gy);
+          if (g > maxG) {
+            maxG = g;
+            bestX = minX + x;
+            bestY = minY + y;
+          }
+        }
+      }
+
+      if (maxG > 35 && Math.hypot(bestX - pt.x, bestY - pt.y) <= searchRadius) {
+        pt.x = bestX;
+        pt.y = bestY;
+      }
+    }
+
+    function onPointerUp() {
+      if (activePinIndex !== -1) {
+        snapCornerToEdge(activePinIndex);
+        activePinIndex = -1;
+      }
+      activeEdgeIndex = -1;
+      dragStartPos = null;
+      dragStartCorners = null;
+      hideLoupe();
+      drawCropCanvas();
+    }
+
+    cropCanvas.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('mousemove', onPointerMove);
+    window.addEventListener('mouseup', onPointerUp);
+    cropCanvas.addEventListener('touchstart', onPointerDown, { passive: false });
+    window.addEventListener('touchmove', onPointerMove, { passive: false });
+    window.addEventListener('touchend', onPointerUp);
+
+    // Apply Crop with True 3x3 Projective Homography Perspective Transform
+    function applyCropAndClose() {
+      const [tl, tr, br, bl] = cropCorners;
+
+      const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+      const botW = Math.hypot(br.x - bl.x, br.y - bl.y);
+      const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+      const rightH = Math.hypot(br.x - tr.x, br.y - tr.y);
+
+      let targetW = Math.round(Math.max(topW, botW));
+      let targetH = Math.round(Math.max(leftH, rightH));
+
+      if (activeCropTarget === 'front' || activeCropTarget === 'back') {
+        // Enforce exact ISO/IEC 7810 ID-1 (CR80) standard aspect ratio (85.60mm / 53.98mm = 1.58577)
+        targetH = Math.round(targetW / 1.58577);
+      }
+
+      const warpedCanvas = warpPerspective(cropImgSource, { tl, tr, br, bl }, targetW, targetH);
+
+      const croppedImg = new Image();
+      croppedImg.onload = () => {
+        if (activeCropTarget === 'front') {
+          frontOriginal = croppedImg;
+          processCardImage('front');
+        } else if (activeCropTarget === 'back') {
+          backOriginal = croppedImg;
+          processCardImage('back');
+        } else if (activeCropTarget === 'doc') {
+          docImageObj = croppedImg;
+          processDocImage();
+        }
+        closeCropModal();
+      };
+      croppedImg.src = warpedCanvas.toDataURL('image/jpeg', 0.95);
+    }
+
+    // Closed-Form Projective Homography Unwarping (Equivalent to OpenCV cv2.warpPerspective)
+    function warpPerspective(srcImg, corners, outW, outH) {
+      const tempSrc = document.createElement('canvas');
+      tempSrc.width = srcImg.width;
+      tempSrc.height = srcImg.height;
+      const sCtx = tempSrc.getContext('2d');
+      sCtx.drawImage(srcImg, 0, 0);
+      const sData = sCtx.getImageData(0, 0, tempSrc.width, tempSrc.height);
+
+      const dst = document.createElement('canvas');
+      dst.width = outW;
+      dst.height = outH;
+      const dCtx = dst.getContext('2d');
+      const dData = dCtx.createImageData(outW, outH);
+
+      const sw = tempSrc.width;
+      const sh = tempSrc.height;
+      const sp = sData.data;
+      const dp = dData.data;
+      const { tl, tr, br, bl } = corners;
+
+      // Heckbert's Projective Mapping: Unit square (u_n, v_n) -> Quad (sxPt, syPt)
+      const dx1 = tr.x - br.x;
+      const dx2 = bl.x - br.x;
+      const dy1 = tr.y - br.y;
+      const dy2 = bl.y - br.y;
+      const sx = tl.x - tr.x + br.x - bl.x;
+      const sy = tl.y - tr.y + br.y - bl.y;
+
+      let g = 0, h = 0;
+      const det = dx1 * dy2 - dx2 * dy1;
+      if (Math.abs(det) > 1e-7) {
+        g = (sx * dy2 - sy * dx2) / det;
+        h = (dx1 * sy - dy1 * sx) / det;
+      }
+      const a = tr.x - tl.x + g * tr.x;
+      const b = bl.x - tl.x + h * bl.x;
+      const c = tl.x;
+      const d = tr.y - tl.y + g * tr.y;
+      const e = bl.y - tl.y + h * bl.y;
+      const f = tl.y;
+
+      for (let y = 0; y < outH; y++) {
+        const vn = y / (outH - 1);
+        const dRow = y * outW * 4;
+
+        for (let x = 0; x < outW; x++) {
+          const un = x / (outW - 1);
+          const denom = g * un + h * vn + 1;
+          const sxPt = (a * un + b * vn + c) / denom;
+          const syPt = (d * un + e * vn + f) / denom;
+
+          const x0 = Math.floor(sxPt);
+          const y0 = Math.floor(syPt);
+          const x1 = Math.min(sw - 1, x0 + 1);
+          const y1 = Math.min(sh - 1, y0 + 1);
+          const dx = sxPt - x0;
+          const dy = syPt - y0;
+
+          if (x0 >= 0 && x1 < sw && y0 >= 0 && y1 < sh) {
+            const i00 = (y0 * sw + x0) * 4;
+            const i10 = (y0 * sw + x1) * 4;
+            const i01 = (y1 * sw + x0) * 4;
+            const i11 = (y1 * sw + x1) * 4;
+            const dIdx = dRow + (x * 4);
+
+            for (let ch = 0; ch < 4; ch++) {
+              dp[dIdx + ch] = Math.round(
+                (1 - dx) * (1 - dy) * sp[i00 + ch] +
+                dx * (1 - dy) * sp[i10 + ch] +
+                (1 - dx) * dy * sp[i01 + ch] +
+                dx * dy * sp[i11 + ch]
+              );
+            }
+          }
+        }
+      }
+
+      dCtx.putImageData(dData, 0, 0);
+      return dst;
+    }
+
+    // -------------------------------------------------------------
+    // Submit Print Job to NearbyPrint Backend
+    // -------------------------------------------------------------
+    async function submitPrint() {
+      const t = I18N[currentLang];
+      const name = document.getElementById('customerName').value.trim();
+      if (!name) {
+        alert(t.alertEnterName);
+        document.getElementById('customerName').focus();
+        return;
+      }
+
+      let payloadBlob = null;
+      let filename = '';
+      let isCard = false;
+
+      if (currentMode === 'card') {
+        if (!frontOriginal && !backOriginal) {
+          alert(t.alertUploadCard);
+          return;
+        }
+        isCard = true;
+        filename = `${name.replace(/[^a-zA-Z0-9]/g, '_')}_IDCard_A4.jpg`;
+        payloadBlob = await generateHighResA4Blob();
+      } else {
+        if (!selectedFile) {
+          alert(t.alertSelectDoc);
+          return;
+        }
+        payloadBlob = selectedFile;
+        filename = selectedFile.name;
+      }
+
+      const submitBtn = document.getElementById('submitBtn');
+      const btnText = document.getElementById('btnText');
+      submitBtn.disabled = true;
+      btnText.innerText = t.submitting;
+
+      try {
+        const response = await fetch('/api/web-print', {
+          method: 'POST',
+          headers: {
+            'x-nearby-source': 'Web Portal',
+            'x-nearby-customer': encodeURIComponent(name),
+            'x-nearby-job-name': encodeURIComponent(filename),
+            'x-nearby-copies': String(copies),
+            'x-nearby-color': colorMode,
+            'x-nearby-is-card': isCard ? 'true' : 'false',
+            'x-nearby-card-layout': cardLayout,
+            'x-nearby-placement': cardPlacement,
+            'x-nearby-paper-size': paperSize,
+            'x-nearby-orientation': orientation,
+            'x-nearby-duplex': docSides,
+            'Content-Type': payloadBlob.type || 'application/octet-stream',
+          },
+          body: payloadBlob,
+        });
+
+        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+
+        document.getElementById('formCard').style.display = 'none';
+        document.getElementById('successView').style.display = 'block';
+        document.getElementById('resCustomer').innerText = name;
+        document.getElementById('resDetails').innerText = `${copies} ${copies > 1 ? 'Copies' : 'Copy'} · ${colorMode === 'bw' ? 'B&W' : 'Color'} · ${paperSize} (${orientation}) ${isCard ? '· ' + cardLayout : ''}`;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (err) {
+        alert(t.alertUploadFail + ` (${err.message})`);
+      } finally {
+        submitBtn.disabled = false;
+        btnText.innerText = t.submitBtn;
+      }
+    }
+
+    // 300 DPI High-Resolution Sheet Generator (Matches Canvas Preview 1:1)
+    async function generateHighResA4Blob() {
+      const printCanvas = document.createElement('canvas');
+      const isLandscape = orientation === 'landscape';
+
+      let printW = 2480, printH = 3508;
+      if (paperSize === 'Legal') {
+        printW = 2480; printH = 4200;
+      } else if (paperSize === '4x6') {
+        printW = 1200; printH = 1800;
+      }
+
+      printCanvas.width = isLandscape ? printH : printW;
+      printCanvas.height = isLandscape ? printW : printH;
+      const ctx = printCanvas.getContext('2d');
+      const w = printCanvas.width;
+      const h = printCanvas.height;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+
+      const refW = isLandscape ? printH : printW;
+      const cardW = Math.round(refW * (85.60 / 210.0));
+      const cardH = Math.round(cardW / 1.586);
+      const cardGap = Math.round(h * 0.03);
+
+      if (cardLayout === 'both') {
+        const totalCardsH = (cardH * 2) + cardGap;
+        const startY = cardPlacement === 'center' ? Math.max(20, Math.round((h - totalCardsH) / 2)) : Math.round(h * 0.045);
+        const cardX = Math.round((w - cardW) / 2);
+
+        if (frontProcessed) ctx.drawImage(frontProcessed, cardX, startY, cardW, cardH);
+        if (backProcessed) ctx.drawImage(backProcessed, cardX, startY + cardH + cardGap, cardW, cardH);
+      } else if (cardLayout === 'front_only') {
+        const startY = cardPlacement === 'center' ? Math.max(20, Math.round((h - cardH) / 2)) : Math.round(h * 0.045);
+        const cardX = Math.round((w - cardW) / 2);
+        if (frontProcessed) ctx.drawImage(frontProcessed, cardX, startY, cardW, cardH);
+      } else if (cardLayout === 'back_only') {
+        const startY = cardPlacement === 'center' ? Math.max(20, Math.round((h - cardH) / 2)) : Math.round(h * 0.045);
+        const cardX = Math.round((w - cardW) / 2);
+        if (backProcessed) ctx.drawImage(backProcessed, cardX, startY, cardW, cardH);
+      }
+
+      return new Promise((resolve) => {
+        printCanvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.96);
+      });
+    }
+        printCanvas.toBlob((blob) => resolve(blob), 'image/jpeg', 0.96);
+      });
+    }
+
+    function resetForm() {
+      clearFile();
+      frontOriginal = null;
+      frontProcessed = null;
+      backOriginal = null;
+      backProcessed = null;
+      document.getElementById('frontPlaceholder').style.display = 'block';
+      document.getElementById('frontImg').style.display = 'none';
+      document.getElementById('frontActions').style.display = 'none';
+      document.getElementById('backPlaceholder').style.display = 'block';
+      document.getElementById('backImg').style.display = 'none';
+      document.getElementById('backActions').style.display = 'none';
+      updateA4Canvas();
+      document.getElementById('formCard').style.display = 'block';
+      document.getElementById('successView').style.display = 'none';
+    }
+
+    // Initialize Language & Layout
+    applyLanguage(currentLang);
+  </script>
+</body>
+</html>

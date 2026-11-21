@@ -1,0 +1,32 @@
+{
+  "productName": "Nearby Print",
+  "version": "0.1.0",
+  "identifier": "com.nearbyprint.app",
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "externalBin": ["bin/SumatraPDF"]
+  },
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Nearby Print",
+        "width": 800,
+        "height": 700,
+        "resizable": true,
+        "minWidth": 400,
+        "minHeight": 500,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}
