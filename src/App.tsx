@@ -200,20 +200,31 @@ export default function App() {
 
   // Permanent SaaS Shop Setup
   const [shopId, setShopId] = useState<string>(() => {
-    return localStorage.getItem('nearby_shop_unique_id') || 'nootan_prints'
+    const saved = localStorage.getItem('nearby_shop_unique_id')
+    if (saved === 'nootan_prints' && localStorage.getItem('nearby_shop_configured') !== 'true') return ''
+    return saved || ''
   })
   const [shopName, setShopName] = useState<string>(() => {
-    return localStorage.getItem('nearby_shop_name') || 'Nootan Prints'
+    const saved = localStorage.getItem('nearby_shop_name')
+    if (saved === 'Nootan Prints' && localStorage.getItem('nearby_shop_configured') !== 'true') return ''
+    return saved || ''
   })
   const [ownerName, setOwnerName] = useState<string>(() => {
-    return localStorage.getItem('nearby_owner_name') || 'Nootan'
+    const saved = localStorage.getItem('nearby_owner_name')
+    if (saved === 'Nootan' && localStorage.getItem('nearby_shop_configured') !== 'true') return ''
+    return saved || ''
   })
   const [publicAppUrl, setPublicAppUrl] = useState<string>(() => {
-    return localStorage.getItem('nearby_public_app_url') || (typeof window !== 'undefined' && window.location.origin.includes('localhost') ? 'https://nearbyprint.vercel.app' : (window.location.origin || 'https://nearbyprint.vercel.app'))
+    return localStorage.getItem('nearby_public_app_url') || 'https://nearbyprint-web.vercel.app'
   })
   const [isSavingShop, setIsSavingShop] = useState(false)
   const [shopSaveSuccess, setShopSaveSuccess] = useState(false)
-  const [showShopModal, setShowShopModal] = useState(false)
+  const [showShopModal, setShowShopModal] = useState<boolean>(() => {
+    const savedId = localStorage.getItem('nearby_shop_unique_id')
+    const savedName = localStorage.getItem('nearby_shop_name')
+    const isConfigured = localStorage.getItem('nearby_shop_configured') === 'true'
+    return !savedId || !savedName || !isConfigured
+  })
   const [isCloudConnected, setIsCloudConnected] = useState(true)
   const [copiedLink, setCopiedLink] = useState(false)
   const [copiedLocalLink, setCopiedLocalLink] = useState(false)
@@ -496,16 +507,29 @@ export default function App() {
   }, [shopId])
 
   const handleSaveShop = async () => {
-    const cleanId = shopId.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
-    if (!cleanId) return
+    const trimmedShopName = shopName.trim()
+    if (!trimmedShopName) {
+      alert('Please enter your Shop Name.')
+      return
+    }
+    let cleanId = shopId.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+    if (!cleanId) {
+      cleanId = trimmedShopName.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '')
+    }
+    if (!cleanId) cleanId = 'shop_' + Math.floor(1000 + Math.random() * 9000)
+
+    const cleanUrl = publicAppUrl.trim() || 'https://nearbyprint-web.vercel.app'
     setIsSavingShop(true)
     setShopSaveSuccess(false)
     try {
       localStorage.setItem('nearby_shop_unique_id', cleanId)
-      localStorage.setItem('nearby_shop_name', shopName)
-      localStorage.setItem('nearby_owner_name', ownerName)
-      localStorage.setItem('nearby_public_app_url', publicAppUrl)
+      localStorage.setItem('nearby_shop_name', trimmedShopName)
+      localStorage.setItem('nearby_owner_name', ownerName.trim())
+      localStorage.setItem('nearby_public_app_url', cleanUrl)
+      localStorage.setItem('nearby_shop_configured', 'true')
       setShopId(cleanId)
+      setShopName(trimmedShopName)
+      setPublicAppUrl(cleanUrl)
 
       // Upsert to Supabase shops table
       const { error } = await supabase
@@ -513,8 +537,8 @@ export default function App() {
         .upsert(
           {
             shop_unique_id: cleanId,
-            shop_name: shopName,
-            owner_name: ownerName,
+            shop_name: trimmedShopName,
+            owner_name: ownerName.trim() || 'Store Counter',
           },
           { onConflict: 'shop_unique_id' }
         )
@@ -565,7 +589,8 @@ export default function App() {
     ? hostnameUrl
     : (activeIp !== '127.0.0.1' ? `http://${activeIp}:${activePort}/portal` : (serverUrl ? `${serverUrl.replace(/\/$/, '')}/portal` : `http://localhost:${activePort}/portal`))
 
-  const permanentCustomerUrl = `${publicAppUrl.replace(/\/$/, '')}/portal?shop=${shopId}`
+  const cleanShop = shopId || 'my_shop'
+  const permanentCustomerUrl = `${(publicAppUrl || 'https://nearbyprint-web.vercel.app').replace(/\/$/, '')}/upload?shop=${cleanShop}`
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(permanentCustomerUrl)
@@ -971,27 +996,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
-      {/* Windows Firewall Warning Banner if ports are blocked */}
-      {!firewallOk && (
-        <div className="bg-amber-500/15 border-b border-amber-500/30 px-6 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-700 dark:text-amber-300">
-          <div className="flex items-center gap-2 min-w-0">
-            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
-            <span className="truncate">
-              <strong>Firewall Notice:</strong> Mobile phones &amp; Mac cannot connect until port 8631 is allowed in Windows Firewall.
-            </span>
-          </div>
-          <Button
-            size="sm"
-            onClick={handleFixFirewall}
-            disabled={isFixingFirewall}
-            className="h-7 px-3 text-xs bg-amber-600 hover:bg-amber-700 text-white shrink-0 font-medium"
-          >
-            {isFixingFirewall ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <ShieldCheck className="w-3.5 h-3.5 mr-1" />}
-            Allow in Firewall (1-Click)
-          </Button>
-        </div>
-      )}
-
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-3.5 border-b border-border bg-card/60 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-3">
@@ -1001,6 +1005,9 @@ export default function App() {
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold tracking-tight">NearbyPrint</h1>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-500/15 text-indigo-500 dark:text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
+                BETA
+              </span>
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
                 {activeIp}
@@ -1010,9 +1017,25 @@ export default function App() {
                 Cloud Active
               </span>
             </div>
-            <span className="text-xs text-muted-foreground truncate max-w-[320px]">
-              {shopName ? `${shopName} · ${deviceName || 'Smart Print Counter'}` : (deviceName ? `"${deviceName}"` : 'Wireless Printing & Smart Web Counter')}
-            </span>
+            {shopName ? (
+              <button
+                type="button"
+                onClick={() => setShowShopModal(true)}
+                className="text-xs text-muted-foreground hover:text-foreground truncate max-w-[340px] text-left flex items-center gap-1 group mt-0.5"
+                title="Click to edit shop details"
+              >
+                <span>{shopName} {ownerName ? `(${ownerName})` : ''} · {deviceName || 'Smart Print Counter'}</span>
+                <span className="text-[10px] text-indigo-500 opacity-60 group-hover:opacity-100">✏️</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowShopModal(true)}
+                className="text-xs font-semibold text-amber-500 hover:text-amber-400 flex items-center gap-1 mt-0.5 animate-pulse text-left"
+              >
+                ⚠️ Click here to set your Shop Name &amp; QR
+              </button>
+            )}
           </div>
         </div>
 
@@ -1091,21 +1114,6 @@ export default function App() {
               <Cloud className="w-3.5 h-3.5" />
               Cloud SaaS (Internet)
             </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSettingsTab('firewall')
-                setShowSettings(true)
-              }}
-              className="gap-1.5 text-xs h-8"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              Connection Helper
-            </Button>
           </div>
         </div>
 
@@ -1697,49 +1705,66 @@ export default function App() {
             </div>
 
             <div className="flex flex-col gap-3.5 text-xs">
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Enter your shop details below. A permanent QR code will be generated for your counter.
+              </p>
+
               <div>
-                <label className="font-semibold block mb-1">Permanent Shop Unique ID</label>
+                <label className="font-semibold block mb-1">
+                  Shop Display Name <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  value={shopName}
+                  onChange={e => {
+                    const val = e.target.value
+                    setShopName(val)
+                    // Auto-slugify if shopId is empty or was auto-generated
+                    if (!shopId || shopId === shopName.toLowerCase().replace(/[^a-z0-9]/g, '_')) {
+                      setShopId(val.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''))
+                    }
+                  }}
+                  placeholder="e.g. Kunal Printing &amp; Xerox"
+                  className="text-xs"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold block mb-1">
+                  Permanent Shop Unique ID (URL Slug) <span className="text-red-500">*</span>
+                </label>
                 <Input
                   value={shopId}
                   onChange={e => setShopId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
-                  placeholder="e.g. nootan_prints"
+                  placeholder="e.g. kunal_printing"
                   className="font-mono text-xs"
+                  required
                 />
                 <span className="text-[11px] text-muted-foreground mt-0.5 block">
-                  Lowercase alphanumeric + underscore only. Never changes automatically.
+                  Lowercase alphanumeric + underscore only. QR Link: <span className="font-mono text-indigo-500">{publicAppUrl}/upload?shop={shopId || 'your_shop'}</span>
                 </span>
               </div>
 
               <div>
-                <label className="font-semibold block mb-1">Shop Display Name</label>
-                <Input
-                  value={shopName}
-                  onChange={e => setShopName(e.target.value)}
-                  placeholder="e.g. Nootan Prints &amp; Xerox"
-                  className="text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold block mb-1">Owner Name</label>
+                <label className="font-semibold block mb-1">Owner / Counter Name</label>
                 <Input
                   value={ownerName}
                   onChange={e => setOwnerName(e.target.value)}
-                  placeholder="e.g. Nootan"
+                  placeholder="e.g. Kunal Kumar"
                   className="text-xs"
                 />
               </div>
 
               <div>
-                <label className="font-semibold block mb-1">Public Web App Domain (Host)</label>
+                <label className="font-semibold block mb-1">Public Web App Domain (Vercel Host)</label>
                 <Input
                   value={publicAppUrl}
                   onChange={e => setPublicAppUrl(e.target.value)}
-                  placeholder="https://nearbyprint.vercel.app"
+                  placeholder="https://nearbyprint-web.vercel.app"
                   className="font-mono text-xs"
                 />
                 <span className="text-[11px] text-muted-foreground mt-0.5 block">
-                  Domain where the customer portal is hosted online.
+                  Your live Vercel deployment URL (defaults to https://nearbyprint-web.vercel.app).
                 </span>
               </div>
             </div>

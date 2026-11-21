@@ -10,7 +10,8 @@ const I18N = {
     langLabel: 'हिन्दी',
     cloudBadge: 'Cloud Online',
     customerNameLabel: 'Customer Name',
-    customerNameHint: '(Required for print identification)',
+    customerNameHint: '(Auto-filled, tap to change)',
+    randomizeName: '🎲 Randomize',
     customerPlaceholder: 'e.g. Rahul Sharma',
     tabCard: 'Aadhaar / PAN (CR80)',
     tabDoc: 'Document / Photos',
@@ -79,7 +80,8 @@ const I18N = {
     langLabel: 'English',
     cloudBadge: 'क्लाउड ऑनलाइन',
     customerNameLabel: 'ग्राहक का नाम',
-    customerNameHint: '(प्रिंट पहचान के लिए आवश्यक)',
+    customerNameHint: '(स्वतः भरा गया, बदलने के लिए टैप करें)',
+    randomizeName: '🎲 नया नाम',
     customerPlaceholder: 'जैसे: राहुल शर्मा',
     tabCard: 'आधार / पैन कार्ड (CR80)',
     tabDoc: 'दस्तावेज़ / फ़ोटो',
@@ -382,7 +384,16 @@ export default function CustomerUploadPortal() {
   }, [])
 
   // Form State
-  const [customerName, setCustomerName] = useState<string>('')
+  const [customerName, setCustomerName] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('nearby_customer_name')
+      if (saved && saved.trim()) return saved
+      const randomNum = Math.floor(1000 + Math.random() * 9000)
+      return `Customer #${randomNum}`
+    } catch {
+      return `Customer #${Math.floor(1000 + Math.random() * 9000)}`
+    }
+  })
   const [mode, setMode] = useState<'card' | 'doc'>('card')
   const [cardLayout, setCardLayout] = useState<'both' | 'front_only' | 'back_only'>('both')
   const [placement, setPlacement] = useState<'top' | 'center'>('top')
@@ -1556,6 +1567,9 @@ export default function CustomerUploadPortal() {
           <div>
             <div className="font-bold text-sm leading-tight text-white flex items-center gap-1.5">
               <span>{t.portalTitle}</span>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-blue-500/20 text-blue-400 border border-blue-500/30 uppercase tracking-wider">
+                BETA
+              </span>
             </div>
             {shopDetails && (
               <div className="text-[11px] text-blue-400 font-medium leading-none mt-0.5">
@@ -1589,14 +1603,31 @@ export default function CustomerUploadPortal() {
           <div className="bg-[#131b2e] border border-[#1e293b] rounded-2xl p-4 sm:p-5 shadow-xl">
             {/* Customer Name */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold text-slate-200 mb-1.5">
-                {t.customerNameLabel}{' '}
-                <span className="text-slate-400 font-normal">{t.customerNameHint}</span>
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-slate-200">
+                  {t.customerNameLabel}{' '}
+                  <span className="text-slate-400 font-normal">{t.customerNameHint}</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const randomNum = Math.floor(1000 + Math.random() * 9000)
+                    const newName = `Customer #${randomNum}`
+                    setCustomerName(newName)
+                    try { localStorage.setItem('nearby_customer_name', newName) } catch {}
+                  }}
+                  className="text-[10px] text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                >
+                  {t.randomizeName}
+                </button>
+              </div>
               <input
                 type="text"
                 value={customerName}
-                onChange={e => setCustomerName(e.target.value)}
+                onChange={e => {
+                  setCustomerName(e.target.value)
+                  try { localStorage.setItem('nearby_customer_name', e.target.value) } catch {}
+                }}
                 placeholder={t.customerPlaceholder}
                 className="w-full px-3.5 py-2.5 bg-transparent border border-[#1e293b] focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl text-sm text-white placeholder-slate-500 outline-none transition-all"
                 required
