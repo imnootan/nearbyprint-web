@@ -238,6 +238,7 @@ export default function App() {
 
   // Queue View Filter: 'all' | 'cloud' | 'wifi'
   const [queueFilter, setQueueFilter] = useState<'all' | 'cloud' | 'wifi'>('all')
+  const [supabaseError, setSupabaseError] = useState<string | null>(null)
 
   const [showQrModal, setShowQrModal] = useState(false)
 
@@ -394,92 +395,112 @@ export default function App() {
       .catch(() => {})
   }, [])
 
-  // Supabase Realtime Listener & Initial Sync
+  // Supabase Direct Query + 3-Second Polling + Realtime Listener
   useEffect(() => {
-    if (!shopId) return
+    const activeShopId = (shopId || '').trim().toLowerCase()
+    if (!activeShopId) {
+      setSupabaseError('Shop ID is not configured. Please set your Shop ID in Settings or Edit Shop.')
+      return
+    }
 
-    // 1. Initial fetch of existing jobs for this shop
-    const fetchCloudJobs = async () => {
+    setSupabaseError(null)
+
+    // Direct query function: runs immediately and every 3 seconds
+    const fetchPendingCloudJobs = async () => {
       try {
         const { data, error } = await supabase
           .from('print_jobs')
           .select('*')
-          .eq('shop_unique_id', shopId)
+          .eq('shop_unique_id', activeShopId)
+          .eq('status', 'pending')
           .order('created_at', { ascending: false })
-          .limit(40)
 
-        if (!error && data) {
-          const cloudJobs: PrintJob[] = data.map((cj: CloudPrintJob) => ({
-            id: `cloud_${cj.id}`,
-            cloud_job_id: cj.id,
-            name: cj.file_url ? (cj.file_url.split('/').pop() || 'document.pdf') : 'document.pdf',
-            device: `Cloud: ${cj.customer_name}`,
-            user: cj.customer_name,
-            pages: 1,
-            bytes: 0,
-            format: 'pdf',
-            status: cj.status === 'printed' ? 'completed' : cj.status === 'rejected' ? 'canceled' : (cj.status as JobStatus),
-            message: `Cloud Order from ${cj.customer_name}`,
-            printer: '',
-            file_url: cj.file_url,
-            channel: 'cloud',
-            customer: cj.customer_name,
-            color_mode: 'bw',
-            created_at: cj.created_at,
-          }))
+        if (error) {
+          console.error('Supabase query error:', error)
+          setSupabaseError(error.message || JSON.stringify(error))
+          return
+        }
+
+        setSupabaseError(null)
+
+        if (data) {
+          // Exact column mapping: id, shop_unique_id, customer_name, file_url, status, created_at
+          const pendingCloudJobs: PrintJob[] = data.map((cj: any) => {
+            const fileUrl = cj.file_url || ''
+            const customerName = cj.customer_name || 'Customer'
+            const fileName = fileUrl ? (fileUrl.split('/').pop()?.split('?')[0] || 'document.pdf') : 'document.pdf'
+            const isColor = /color/i.test(customerName)
+            return {
+              id: `cloud_${cj.id}`,
+              cloud_job_id: String(cj.id),
+              name: decodeURIComponent(fileName),
+              device: `Cloud: ${customerName}`,
+              user: customerName,
+              pages: 1,
+              bytes: 0,
+              format: 'pdf',
+              status: 'pending' as JobStatus,
+              message: `Cloud Order from ${customerName}`,
+              printer: '',
+              file_url: fileUrl,
+              channel: 'cloud' as const,
+              customer: customerName,
+              color_mode: isColor ? ('color' as const) : ('bw' as const),
+              created_at: cj.created_at,
+            }
+          })
 
           setJobs(prev => {
-            const nonCloudJobs = prev.filter(j => j.channel !== 'cloud')
-            return [...cloudJobs, ...nonCloudJobs]
+            const wifiJobs = prev.filter(j => j.channel !== 'cloud')
+            const localProcessedCloudJobs = prev.filter(j => j.channel === 'cloud' && j.status !== 'pending')
+            const localProcessedIds = new Set(localProcessedCloudJobs.map(j => j.cloud_job_id))
+
+            const activePendingCloud = pendingCloudJobs.filter(j => !localProcessedIds.has(j.cloud_job_id))
+
+            const prevPendingIds = new Set(prev.filter(j => j.channel === 'cloud' && j.status === 'pending').map(j => j.cloud_job_id))
+            const newJobs = activePendingCloud.filter(j => !prevPendingIds.has(j.cloud_job_id))
+
+            if (newJobs.length > 0 && prev.length > 0) {
+              playDoorbellChime()
+            }
+
+            if (autoPrintCloudRef.current) {
+              newJobs.forEach(job => {
+                if (!inFlight.current.has(job.id)) {
+                  handleAcceptCloudJob(job)
+                }
+              })
+            }
+
+            return [...activePendingCloud, ...localProcessedCloudJobs, ...wifiJobs]
           })
         }
-      } catch (err) {
-        console.warn('Initial cloud jobs fetch failed:', err)
+      } catch (err: any) {
+        console.error('Supabase query exception:', err)
+        setSupabaseError(err?.message || String(err))
       }
     }
 
-    fetchCloudJobs()
+    // 1. Initial direct query on load
+    fetchPendingCloudJobs()
 
-    // 2. Realtime subscription for incoming cloud jobs
+    // 2. 3-Second interval polling
+    const pollInterval = setInterval(fetchPendingCloudJobs, 3000)
+
+    // 3. Realtime subscription for instantaneous response
     const channel = supabase
-      .channel(`realtime-shop-${shopId}`)
+      .channel(`realtime-shop-${activeShopId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'print_jobs',
-          filter: `shop_unique_id=eq.${shopId}`,
+          filter: `shop_unique_id=eq.${activeShopId}`,
         },
         payload => {
           if (payload.eventType === 'INSERT') {
-            const newCj = payload.new as CloudPrintJob
-            playDoorbellChime()
-            const newJob: PrintJob = {
-              id: `cloud_${newCj.id}`,
-              cloud_job_id: newCj.id,
-              name: newCj.file_url ? (newCj.file_url.split('/').pop() || 'document.pdf') : 'document.pdf',
-              device: `Cloud: ${newCj.customer_name}`,
-              user: newCj.customer_name,
-              pages: 1,
-              bytes: 0,
-              format: 'pdf',
-              status: newCj.status === 'printed' ? 'completed' : newCj.status === 'rejected' ? 'canceled' : (newCj.status as JobStatus),
-              message: `New Cloud Order from ${newCj.customer_name}`,
-              printer: '',
-              file_url: newCj.file_url,
-              channel: 'cloud',
-              customer: newCj.customer_name,
-              color_mode: 'bw',
-              created_at: newCj.created_at,
-            }
-
-            setJobs(prev => [newJob, ...prev.filter(j => j.id !== newJob.id)])
-
-            // Auto-print if enabled
-            if (autoPrintCloudRef.current && newCj.status === 'pending') {
-              handleAcceptCloudJob(newJob)
-            }
+            fetchPendingCloudJobs()
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as CloudPrintJob
             setJobs(prev =>
@@ -502,6 +523,7 @@ export default function App() {
       })
 
     return () => {
+      clearInterval(pollInterval)
       supabase.removeChannel(channel)
     }
   }, [shopId])
@@ -1342,9 +1364,16 @@ export default function App() {
                       ID: {shopId}
                     </span>
                   </div>
-                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Supabase Realtime Active
-                  </span>
+                  {supabaseError ? (
+                    <span className="text-[11px] text-red-500 font-bold flex items-center gap-1 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
+                      <AlertTriangle className="w-3 h-3 text-red-500 shrink-0" />
+                      Supabase Error: {supabaseError}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Supabase Realtime Active
+                    </span>
+                  )}
                 </div>
 
                 {/* Shareable Link Input with Copy */}
@@ -1514,6 +1543,34 @@ export default function App() {
                 Wi-Fi ({jobs.filter(j => j.channel !== 'cloud').length})
               </button>
             </div>
+          </div>
+
+          {/* Cloud Polling Status & Supabase Error Notification */}
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-card/60 border border-border px-3 py-2 rounded-xl text-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-muted-foreground font-medium">Cloud Polling (every 3s):</span>
+              <span className="font-mono bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-md font-semibold">
+                shop_unique_id = {shopId || '(Not Set)'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowShopModal(true)}
+                className="text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 underline font-semibold ml-1 cursor-pointer"
+              >
+                Change Shop ID
+              </button>
+            </div>
+            {supabaseError ? (
+              <span className="text-red-500 dark:text-red-400 font-bold flex items-center gap-1.5 bg-red-500/10 px-2.5 py-1 rounded-md border border-red-500/20">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>Error: {supabaseError}</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground text-[11px]">
+                Query: <span className="font-mono text-foreground font-semibold">status = 'pending'</span>
+              </span>
+            )}
           </div>
 
           {filteredJobs.length === 0 ? (
@@ -1945,16 +2002,28 @@ export default function App() {
                     <label className="font-semibold text-foreground text-xs">Permanent Shop Unique ID</label>
                     <Input
                       value={shopId}
-                      onChange={e => setShopId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
+                      onChange={e => {
+                        const val = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_')
+                        setShopId(val)
+                        localStorage.setItem('nearby_shop_unique_id', val)
+                      }}
                       className="font-mono text-xs"
+                      placeholder="e.g. kunal_print"
                     />
+                    <span className="text-[11px] text-muted-foreground">
+                      Must match the 'shop_unique_id' in Supabase print_jobs table (e.g. <span className="font-mono text-indigo-500 font-semibold">kunal_print</span>).
+                    </span>
                   </div>
 
                   <div className="flex flex-col gap-1.5">
                     <label className="font-semibold text-foreground text-xs">Shop Name</label>
                     <Input
                       value={shopName}
-                      onChange={e => setShopName(e.target.value)}
+                      onChange={e => {
+                        const val = e.target.value
+                        setShopName(val)
+                        localStorage.setItem('nearby_shop_name', val)
+                      }}
                       className="text-xs"
                     />
                   </div>
@@ -1963,7 +2032,11 @@ export default function App() {
                     <label className="font-semibold text-foreground text-xs">Public Customer Portal Domain</label>
                     <Input
                       value={publicAppUrl}
-                      onChange={e => setPublicAppUrl(e.target.value)}
+                      onChange={e => {
+                        const val = e.target.value
+                        setPublicAppUrl(val)
+                        localStorage.setItem('nearby_public_app_url', val)
+                      }}
                       className="font-mono text-xs"
                     />
                   </div>
