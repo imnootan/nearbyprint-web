@@ -157,6 +157,15 @@ function HostOption({
   )
 }
 
+function sanitizePublicUrl(url: string | null | undefined): string {
+  if (!url) return 'https://nearbyprint-web.vercel.app'
+  const trimmed = url.trim()
+  if (!trimmed || trimmed.includes('127.0.0.1') || trimmed.includes('localhost') || trimmed.includes(':1420')) {
+    return 'https://nearbyprint-web.vercel.app'
+  }
+  return trimmed.replace(/\/$/, '')
+}
+
 export default function App() {
   // Broadcast & network
   const [isBroadcasting, setIsBroadcasting] = useState(false)
@@ -215,7 +224,12 @@ export default function App() {
     return saved || ''
   })
   const [publicAppUrl, setPublicAppUrl] = useState<string>(() => {
-    return localStorage.getItem('nearby_public_app_url') || 'https://nearbyprint-web.vercel.app'
+    const saved = localStorage.getItem('nearby_public_app_url')
+    const sanitized = sanitizePublicUrl(saved)
+    if (saved !== sanitized) {
+      localStorage.setItem('nearby_public_app_url', sanitized)
+    }
+    return sanitized
   })
   const [isSavingShop, setIsSavingShop] = useState(false)
   const [shopSaveSuccess, setShopSaveSuccess] = useState(false)
@@ -540,7 +554,7 @@ export default function App() {
     }
     if (!cleanId) cleanId = 'shop_' + Math.floor(1000 + Math.random() * 9000)
 
-    const cleanUrl = publicAppUrl.trim() || 'https://nearbyprint-web.vercel.app'
+    const cleanUrl = sanitizePublicUrl(publicAppUrl)
     setIsSavingShop(true)
     setShopSaveSuccess(false)
     try {
@@ -611,8 +625,8 @@ export default function App() {
     ? hostnameUrl
     : (activeIp !== '127.0.0.1' ? `http://${activeIp}:${activePort}/portal` : (serverUrl ? `${serverUrl.replace(/\/$/, '')}/portal` : `http://localhost:${activePort}/portal`))
 
-  const cleanShop = shopId || 'my_shop'
-  const permanentCustomerUrl = `${(publicAppUrl || 'https://nearbyprint-web.vercel.app').replace(/\/$/, '')}/upload?shop=${cleanShop}`
+  const cleanShop = (shopId || 'my_shop').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
+  const permanentCustomerUrl = `${sanitizePublicUrl(publicAppUrl)}/upload?shop=${cleanShop}`
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(permanentCustomerUrl)
@@ -825,9 +839,23 @@ export default function App() {
 
       const usable = list.filter(p => !p.isSelf)
       if (usable.length > 0) {
-        if (!selectedBwPrinter || !usable.some(p => p.name === selectedBwPrinter)) {
-          const defaultBw = usable.find(p => p.online)?.name || usable[0].name
+        const isVirtual = (name: string) => /pdf|onenote|fax|xps/i.test(name)
+        const physical = usable.filter(p => !isVirtual(p.name))
+
+        if (!selectedBwPrinter || !usable.some(p => p.name === selectedBwPrinter) || isVirtual(selectedBwPrinter)) {
+          const hpLaserJet = usable.find(p => /laserjet/i.test(p.name))
+          const defaultBw = hpLaserJet?.name
+            || physical.find(p => p.online)?.name
+            || physical[0]?.name
+            || usable.find(p => p.online)?.name
+            || usable[0].name
           setSelectedBwPrinter(defaultBw)
+        }
+        if (!selectedColorPrinter || !usable.some(p => p.name === selectedColorPrinter)) {
+          const colorPrn = physical.find(p => /epson|canon|color|inktank/i.test(p.name))
+          if (colorPrn) {
+            setSelectedColorPrinter(colorPrn.name)
+          }
         }
       }
     } catch (e) {
@@ -932,11 +960,15 @@ export default function App() {
       const bytes = Array.from(new Uint8Array(arrayBuffer))
 
       // 2. Submit to local print queue
+      const isPdf = job.name.toLowerCase().endsWith('.pdf') || (job.file_url && job.file_url.toLowerCase().includes('.pdf'))
+      const isPng = job.name.toLowerCase().endsWith('.png') || (job.file_url && job.file_url.toLowerCase().includes('.png'))
+      const contentType = isPdf ? 'application/pdf' : (isPng ? 'image/png' : 'image/jpeg')
+
       const localJobId = await invoke<number>('submit_cloud_job', {
         customer: job.customer || job.user,
         filename: job.name,
         data: bytes,
-        contentType: 'application/pdf',
+        contentType,
         copies: 1,
         colorMode: job.color_mode || 'bw',
       })
@@ -1038,17 +1070,6 @@ export default function App() {
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-500/15 text-indigo-500 dark:text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
                 BETA
               </span>
-              <button
-                type="button"
-                onClick={toggleBroadcast}
-                title={isBroadcasting ? "Local Wi-Fi Printer Broadcasting Active (Click to toggle)" : "Local Wi-Fi Broadcasting Inactive (Click to start)"}
-                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 transition-all cursor-pointer ${
-                  isBroadcasting ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30' : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
-                }`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${isBroadcasting ? 'bg-sky-500 animate-pulse' : 'bg-amber-500'}`} />
-                {isBroadcasting ? `${activeIp} · Wi-Fi ON` : `${activeIp} · Wi-Fi OFF`}
-              </button>
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 Cloud Active
@@ -1104,225 +1125,8 @@ export default function App() {
       </header>
 
       <main className="flex-1 max-w-3xl mx-auto w-full flex flex-col gap-5 px-5 py-5">
-        {/* COUNTER VIEW SWITCHER */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 px-0.5">
-          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-border text-xs">
-            <button
-              type="button"
-              onClick={() => {
-                setCounterTab('both')
-                localStorage.setItem('nearby_counter_tab', 'both')
-              }}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition-all ${
-                counterTab === 'both'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              📑 Dual Counter View
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setCounterTab('wifi')
-                localStorage.setItem('nearby_counter_tab', 'wifi')
-              }}
-              className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
-                counterTab === 'wifi'
-                  ? 'bg-sky-600 text-white shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Wifi className="w-3.5 h-3.5" />
-              Local Wi-Fi Counter
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setCounterTab('cloud')
-                localStorage.setItem('nearby_counter_tab', 'cloud')
-              }}
-              className={`px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
-                counterTab === 'cloud'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Cloud className="w-3.5 h-3.5" />
-              Cloud SaaS (Internet)
-            </button>
-          </div>
-        </div>
-
-        {/* SECTION 1A: LOCAL WI-FI CONNECTION & CUSTOMER PORTAL */}
-        {(counterTab === 'both' || counterTab === 'wifi') && (
-          <section className="bg-gradient-to-br from-card via-card to-sky-500/5 border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-2">
-                  <Wifi className="w-4 h-4 text-sky-500" />
-                  <h2 className="text-base font-bold">
-                    Local Wi-Fi Connection &amp; Customer Portal
-                  </h2>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Connect from Android / Mac / iOS or scan QR code on shop Wi-Fi (Works 100% Offline, 0 Internet).
-                </p>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex items-center gap-2 bg-background/80 px-2.5 py-1 rounded-lg border border-border">
-                  <span className={`w-2 h-2 rounded-full ${isBroadcasting ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
-                  <span className="text-xs font-semibold">
-                    {isBroadcasting ? 'Wi-Fi Broadcast ON' : 'Wi-Fi Broadcast OFF'}
-                  </span>
-                  <Switch
-                    checked={isBroadcasting}
-                    onCheckedChange={toggleBroadcast}
-                    title="Toggle Local Wi-Fi IPP / mDNS Broadcast"
-                  />
-                </div>
-                <Button
-                  size="sm"
-                  onClick={handlePrintLocalQrCard}
-                  className="gap-1.5 text-xs h-8 bg-sky-600 hover:bg-sky-700 text-white shadow-sm font-semibold"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Print Wi-Fi Stand Card
-                </Button>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center gap-5 bg-muted/40 border border-border rounded-xl p-4">
-              {/* Local Wi-Fi QR Code */}
-              <div className="flex flex-col items-center gap-1.5 shrink-0">
-                <div
-                  className="p-2 bg-white rounded-xl shadow-sm border border-slate-200 cursor-pointer hover:scale-105 transition-transform"
-                  onClick={() => {
-                    setModalQrTab('wifi')
-                    setShowQrModal(true)
-                  }}
-                  title="Click to zoom Local Wi-Fi QR"
-                >
-                  <QRCodeSVG
-                    id="local-counter-qr"
-                    value={localPortalUrl}
-                    size={110}
-                    level="M"
-                    includeMargin={false}
-                  />
-                </div>
-                <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1">
-                  <QrCode className="w-3 h-3 text-sky-500" /> Local Wi-Fi QR
-                </span>
-              </div>
-
-              {/* Local Wi-Fi Connection Links & Controls */}
-              <div className="flex flex-col gap-3 min-w-0 flex-1 w-full">
-                {/* 1. Wireless Connection (IPP Address) */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider flex items-center gap-1.5">
-                    <Wifi className="w-3 h-3 text-sky-500" /> Wireless Connection (IPP Address)
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs bg-background border border-border px-2.5 py-1.5 rounded-lg text-foreground font-semibold select-all truncate flex-1">
-                      {wirelessIppUrl}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCopyIpp}
-                      className="h-8 px-2.5 text-xs gap-1 shrink-0"
-                      title="Copy IPP Connection Address"
-                    >
-                      {copiedIpp ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedIpp ? 'Copied!' : 'Copy IPP'}</span>
-                    </Button>
-                  </div>
-                </div>
-
-                {/* 2. Customer Web Portal URL */}
-                <div className="flex flex-col gap-1">
-                  <span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider flex items-center gap-1.5">
-                    <Globe className="w-3 h-3 text-purple-500" /> Customer Web Portal URL (Shop Wi-Fi)
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs bg-background border border-border px-2.5 py-1.5 rounded-lg text-primary font-semibold select-all truncate flex-1">
-                      {localPortalUrl}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCopyLocalLink}
-                      className="h-8 px-2.5 text-xs gap-1 shrink-0"
-                      title="Copy Web Portal Link"
-                    >
-                      {copiedLocalLink ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedLocalLink ? 'Copied!' : 'Copy Link'}</span>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => window.open(localPortalUrl, '_blank')}
-                      className="h-8 px-2 text-xs gap-1 shrink-0 text-muted-foreground hover:text-foreground"
-                      title="Open Web Portal in Browser"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Active Network Adapter / Wi-Fi IP Selector */}
-                {localIps.length > 0 && (
-                  <div className="flex items-center gap-2 text-xs pt-0.5 flex-wrap">
-                    <span className="text-muted-foreground font-semibold flex items-center gap-1">
-                      <Network className="w-3 h-3 text-sky-500" /> Active Wi-Fi IP:
-                    </span>
-                    <select
-                      value={activeIp}
-                      onChange={(e) => {
-                        setSelectedIp(e.target.value)
-                        localStorage.setItem('nearby_selected_ip', e.target.value)
-                      }}
-                      className="font-mono bg-background border border-border rounded-md px-2 py-1 outline-none text-foreground cursor-pointer text-xs font-medium focus:ring-2 focus:ring-primary/20"
-                    >
-                      {localIps.map(ip => (
-                        <option key={ip} value={ip}>{ip}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Local Wi-Fi Auto-Print Controls */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-border/60">
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-background/60 border border-border/60">
-                    <div className="flex items-center gap-2">
-                      <Wifi className="w-3.5 h-3.5 text-sky-500" />
-                      <span className="text-xs font-semibold">Auto-Print: Wi-Fi Direct</span>
-                    </div>
-                    <Switch
-                      checked={autoPrintWifi}
-                      onCheckedChange={setAutoPrintWifi}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-background/60 border border-border/60">
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-3.5 h-3.5 text-purple-500" />
-                      <span className="text-xs font-semibold">Auto-Print: Web Portal</span>
-                    </div>
-                    <Switch
-                      checked={autoPrintWeb}
-                      onCheckedChange={setAutoPrintWeb}
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* SECTION 1B: PERMANENT CLOUD SAAS COUNTER & QR CODE */}
-        {(counterTab === 'both' || counterTab === 'cloud') && (
-          <section className="bg-gradient-to-br from-card via-card to-indigo-500/5 border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-4">
+        {/* PERMANENT CLOUD SAAS COUNTER & QR CODE */}
+        <section className="bg-gradient-to-br from-card via-card to-indigo-500/5 border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-2">
@@ -1449,7 +1253,6 @@ export default function App() {
               </div>
             </div>
           </section>
-        )}
 
         {/* SECTION 2: DUAL PRINTER ASSIGNMENT (B&W vs COLOR) */}
         <section className="bg-card border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-3">
@@ -1556,18 +1359,20 @@ export default function App() {
                   <span className="w-2 h-2 rounded-full bg-amber-400" />
                 )}
               </button>
-              <button
-                type="button"
-                onClick={() => setQueueFilter('wifi')}
-                className={`px-3 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
-                  queueFilter === 'wifi'
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Wifi className="w-3 h-3" />
-                Wi-Fi ({jobs.filter(j => j.channel !== 'cloud').length})
-              </button>
+              {jobs.filter(j => j.channel !== 'cloud').length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setQueueFilter('wifi')}
+                  className={`px-3 py-1 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
+                    queueFilter === 'wifi'
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Wifi className="w-3 h-3" />
+                  Wi-Fi ({jobs.filter(j => j.channel !== 'cloud').length})
+                </button>
+              )}
             </div>
           </div>
 
@@ -1887,39 +1692,11 @@ export default function App() {
               </Button>
             </div>
 
-            {/* QR Type Switcher */}
-            <div className="grid grid-cols-2 gap-1 w-full bg-muted/60 p-1 rounded-xl border border-border text-xs">
-              <button
-                type="button"
-                onClick={() => setModalQrTab('wifi')}
-                className={`py-1.5 px-2 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                  modalQrTab === 'wifi'
-                    ? 'bg-sky-600 text-white shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Wifi className="w-3.5 h-3.5" />
-                Local Wi-Fi QR
-              </button>
-              <button
-                type="button"
-                onClick={() => setModalQrTab('cloud')}
-                className={`py-1.5 px-2 rounded-lg font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                  modalQrTab === 'cloud'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Cloud className="w-3.5 h-3.5" />
-                Cloud Internet QR
-              </button>
-            </div>
-
             {/* QR Image */}
             <div className="p-3 bg-white rounded-2xl shadow-md border border-slate-200">
               <QRCodeSVG
-                id={modalQrTab === 'wifi' ? 'modal-local-qr' : 'modal-cloud-qr'}
-                value={modalQrTab === 'wifi' ? localPortalUrl : permanentCustomerUrl}
+                id="modal-cloud-qr"
+                value={permanentCustomerUrl}
                 size={220}
                 level="M"
                 includeMargin={false}
@@ -1928,14 +1705,10 @@ export default function App() {
 
             <div className="flex flex-col gap-1 w-full text-center">
               <span className="text-[11px] font-semibold text-muted-foreground">
-                {modalQrTab === 'wifi'
-                  ? '📶 Works 100% Offline on Shop Wi-Fi'
-                  : '☁️ Works on Any Internet / 4G / 5G / Anywhere'}
+                ☁️ Permanent Customer Self-Service QR (Any Internet / 4G / 5G)
               </span>
-              <div className={`font-mono text-xs px-3 py-1.5 rounded-lg select-all break-all ${
-                modalQrTab === 'wifi' ? 'text-sky-600 bg-sky-500/10' : 'text-indigo-600 bg-indigo-500/10'
-              }`}>
-                {modalQrTab === 'wifi' ? localPortalUrl : permanentCustomerUrl}
+              <div className="font-mono text-xs px-3 py-1.5 rounded-lg select-all break-all text-indigo-600 bg-indigo-500/10">
+                {permanentCustomerUrl}
               </div>
             </div>
 
@@ -1943,19 +1716,15 @@ export default function App() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={modalQrTab === 'wifi' ? handleCopyLocalLink : handleCopyLink}
+                onClick={handleCopyLink}
                 className="flex-1 text-xs"
               >
-                {modalQrTab === 'wifi'
-                  ? (copiedLocalLink ? 'Copied! ✓' : 'Copy Wi-Fi Link')
-                  : (copiedLink ? 'Copied! ✓' : 'Copy Cloud Link')}
+                {copiedLink ? 'Copied! ✓' : 'Copy Cloud Link'}
               </Button>
               <Button
                 size="sm"
-                onClick={modalQrTab === 'wifi' ? handlePrintLocalQrCard : handlePrintPermanentQrCard}
-                className={`flex-1 text-xs text-white ${
-                  modalQrTab === 'wifi' ? 'bg-sky-600 hover:bg-sky-700' : 'bg-indigo-600 hover:bg-indigo-700'
-                }`}
+                onClick={handlePrintPermanentQrCard}
+                className="flex-1 text-xs text-white bg-indigo-600 hover:bg-indigo-700"
               >
                 Print Standee
               </Button>
@@ -2080,6 +1849,61 @@ export default function App() {
               {/* Tab: Wi-Fi LAN */}
               {settingsTab === 'network' && (
                 <div className="flex flex-col gap-4">
+                  {/* 1. Wireless Connection (IPP Address) */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                      <Wifi className="w-3.5 h-3.5 text-sky-500" /> Wireless Connection (IPP Address)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs bg-background border border-border px-2.5 py-2 rounded-lg text-foreground font-semibold select-all truncate flex-1">
+                        {wirelessIppUrl}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCopyIpp}
+                        className="h-9 px-3 text-xs gap-1.5 shrink-0"
+                      >
+                        {copiedIpp ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedIpp ? 'Copied!' : 'Copy IPP'}</span>
+                      </Button>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">
+                      Use this IPP address to print directly from Android / iPhone / Mac on the same Wi-Fi router.
+                    </span>
+                  </div>
+
+                  {/* 2. Customer Web Portal URL (Shop Wi-Fi) */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5 text-purple-500" /> Local Customer Web Portal URL (Shop Wi-Fi)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs bg-background border border-border px-2.5 py-2 rounded-lg text-primary font-semibold select-all truncate flex-1">
+                        {localPortalUrl}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCopyLocalLink}
+                        className="h-9 px-3 text-xs gap-1.5 shrink-0"
+                      >
+                        {copiedLocalLink ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedLocalLink ? 'Copied!' : 'Copy Link'}</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => window.open(localPortalUrl, '_blank')}
+                        className="h-9 px-2 text-xs gap-1 shrink-0 text-muted-foreground hover:text-foreground"
+                        title="Open in Browser"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* 3. Active Network Adapter IP */}
                   <div className="flex flex-col gap-1.5">
                     <label className="font-semibold text-foreground text-xs">Active Network Adapter IP</label>
                     <select
@@ -2094,6 +1918,36 @@ export default function App() {
                         <option key={ip} value={ip}>{ip}</option>
                       ))}
                     </select>
+                  </div>
+
+                  {/* 4. Local Wi-Fi Broadcast Toggle */}
+                  <div className="p-3 bg-muted/40 border border-border rounded-xl flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold block text-xs">Local Wi-Fi IPP &amp; mDNS Broadcast</span>
+                      <span className="text-[11px] text-muted-foreground">
+                        {isBroadcasting ? 'Broadcasting on local network (Port 8631)' : 'Broadcast currently disabled'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${isBroadcasting ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                      <Switch
+                        checked={isBroadcasting}
+                        onCheckedChange={toggleBroadcast}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 5. Wi-Fi Stand Card */}
+                  <div className="flex justify-end pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePrintLocalQrCard}
+                      className="gap-1.5 text-xs h-8"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      Print Local Wi-Fi Standee
+                    </Button>
                   </div>
                 </div>
               )}

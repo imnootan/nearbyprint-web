@@ -1696,6 +1696,121 @@ fn sidecar_args(printer: &str, path: &Path, options: PrintOptions) -> Vec<String
     args
 }
 
+#[cfg(windows)]
+fn sidecar_default_args(path: &Path, options: PrintOptions) -> Vec<String> {
+    let mut args: Vec<String> = Vec::new();
+    args.push("-print-to-default".to_string());
+    args.push("-silent".to_string());
+    let settings = options.sumatra_print_settings();
+    if !settings.is_empty() {
+        args.push("-print-settings".to_string());
+        args.push(settings);
+    }
+    args.push("-exit-when-done".to_string());
+    args.push(path.to_string_lossy().to_string());
+    args
+}
+
+#[cfg(windows)]
+fn set_windows_default_printer(printer: &str) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let printer_ps = printer.replace('\'', "''");
+    let script = format!(
+        "$ErrorActionPreference = 'SilentlyContinue'; \
+         $p = Get-CimInstance -ClassName Win32_Printer -Filter \"Name='{printer_ps}'\"; \
+         if ($null -ne $p) {{ Invoke-CimMethod -InputObject $p -MethodName SetDefaultPrinter | Out-Null }}"
+    );
+    let _ = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+}
+
+#[cfg(windows)]
+fn print_image_windows(
+    printer: &str,
+    path: &Path,
+    title: &str,
+    options: PrintOptions,
+) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let file = path.to_string_lossy().replace('\'', "''");
+    let printer_ps = printer.replace('\'', "''");
+    let copies = options.copies.max(1);
+    let landscape = match options.orientation {
+        ORIENTATION_LANDSCAPE | ORIENTATION_REVERSE_LANDSCAPE => "$true",
+        _ => "$false",
+    };
+
+    let script = format!(
+        r#"$ErrorActionPreference = 'Stop';
+Add-Type -AssemblyName System.Drawing;
+$filePath = '{file}';
+$printer = '{printer_ps}';
+if (-not (Test-Path $filePath)) {{ throw 'File not found' }};
+$doc = New-Object System.Drawing.Printing.PrintDocument;
+$doc.PrinterSettings.PrinterName = $printer;
+if (-not $doc.PrinterSettings.IsValid) {{ throw "Printer invalid or not found: $printer" }};
+$doc.PrinterSettings.Copies = {copies};
+$doc.DefaultPageSettings.Landscape = {landscape};
+$doc.DocumentName = '{title}';
+$img = [System.Drawing.Image]::FromFile($filePath);
+$doc.add_PrintPage({{
+    param($s, $e)
+    $page = $e.PageBounds;
+    $imgW = $img.Width;
+    $imgH = $img.Height;
+    $scaleX = $page.Width / $imgW;
+    $scaleY = $page.Height / $imgH;
+    $scale = [Math]::Min($scaleX, $scaleY);
+    $destW = [int]($imgW * $scale);
+    $destH = [int]($imgH * $scale);
+    $destX = $page.Left + [int](($page.Width - $destW) / 2);
+    $destY = $page.Top + [int](($page.Height - $destH) / 2);
+    $e.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic;
+    $e.Graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality;
+    $e.Graphics.DrawImage($img, $destX, $destY, $destW, $destH);
+    $e.HasMorePages = $false;
+}});
+$doc.Print();
+$img.Dispose();
+$doc.Dispose();"#
+    );
+
+    let out = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &script,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    match out {
+        Ok(o) if o.status.success() => {
+            logln!("Image '{title}' successfully printed on '{printer}'");
+            Ok(String::new())
+        }
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+            let detail = if stderr.is_empty() {
+                String::from_utf8_lossy(&o.stdout).trim().to_string()
+            } else {
+                stderr
+            };
+            logln!("Image print on '{printer}' failed: {detail}");
+            Err(detail)
+        }
+        Err(e) => Err(format!("Could not execute PowerShell image print: {e}")),
+    }
+}
+
 /// Where the sidecar may live: next to the running exe (build output and
 /// installed builds), in the Tauri resource folder, and in the project tree
 /// for `tauri dev` / `cargo run`.
@@ -1744,11 +1859,24 @@ fn print_with_sidecar(
     let exe = sidecar_path(app)?;
     // `run_hidden` supplies both halves of "silent": no console window, and a
     // bounded wait so a stuck spooler cannot wedge the print pipeline.
-    let out = run_hidden(
+    let mut out = run_hidden(
         &exe,
         &sidecar_args(printer, path, options),
         SIDECAR_TIMEOUT,
     );
+
+    // If -print-to failed (e.g. queues with parentheses like 'HP LaserJet (Shop)'),
+    // retry with -print-to-default because the queue was set as Windows default.
+    if let Some(ref o) = out {
+        if !o.status.success() {
+            logln!("SumatraPDF -print-to failed ({:?}). Retrying with -print-to-default...", o.status);
+            out = run_hidden(
+                &exe,
+                &sidecar_default_args(path, options),
+                SIDECAR_TIMEOUT,
+            );
+        }
+    }
 
     match out {
         Some(o) if o.status.success() => {
@@ -1804,10 +1932,30 @@ fn send_to_printer(
     title: &str,
     options: PrintOptions,
 ) -> Result<String, String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let is_image = matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "bmp" | "webp" | "gif");
+
+    if is_image {
+        logln!("Printing image '{}' to '{printer}' via Windows PrintDocument", path.display());
+        return print_image_windows(printer, path, title, options);
+    }
+
+    // Set Windows default printer so both -print-to-default and shell verb target the right device
+    set_windows_default_printer(printer);
+
     // Silent sidecar first - it never opens a PDF viewer.
     if let Some(result) = print_with_sidecar(app, printer, path, title, options) {
-        return result.map(|_| String::new());
+        if result.is_ok() {
+            return Ok(String::new());
+        }
+        logln!("Silent sidecar failed: {:?}. Falling back to shell print.", result);
     }
+
     logln!("Silent sidecar unavailable - falling back to Start-Process -Verb Print");
     // The shell verb has no copies or orientation knob at all, so the only
     // way to honour `copies` here is to submit the document once per copy.
@@ -4846,6 +4994,12 @@ fn extension_for(format: &str, data: &[u8]) -> &'static str {
     }
     if f.contains("urf") {
         return "urf";
+    }
+    if data.starts_with(b"\x89PNG") || f.contains("png") {
+        return "png";
+    }
+    if (data.starts_with(b"RIFF") && data.len() >= 12 && &data[8..12] == b"WEBP") || f.contains("webp") {
+        return "webp";
     }
     if f.contains("jpeg") || f.contains("jpg") {
         return "jpg";
