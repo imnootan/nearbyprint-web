@@ -840,6 +840,14 @@ export default function App() {
   const refreshAll = async () => {
     setIsRefreshing(true)
     await Promise.all([refreshStatus(), refreshPrinters()])
+    // Auto-restore local wireless IPP & mDNS broadcasting if stopped
+    try {
+      const net = await invoke<{ running?: boolean; port?: number }>('get_network_status').catch(() => null)
+      if (net && !net.running) {
+        await invoke('toggle_broadcast', { enable: true })
+        await refreshStatus()
+      }
+    } catch {}
     setIsRefreshing(false)
   }
 
@@ -1030,10 +1038,17 @@ export default function App() {
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-500/15 text-indigo-500 dark:text-indigo-400 border border-indigo-500/30 uppercase tracking-wider">
                 BETA
               </span>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
-                {activeIp}
-              </span>
+              <button
+                type="button"
+                onClick={toggleBroadcast}
+                title={isBroadcasting ? "Local Wi-Fi Printer Broadcasting Active (Click to toggle)" : "Local Wi-Fi Broadcasting Inactive (Click to start)"}
+                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 transition-all cursor-pointer ${
+                  isBroadcasting ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30' : 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${isBroadcasting ? 'bg-sky-500 animate-pulse' : 'bg-amber-500'}`} />
+                {isBroadcasting ? `${activeIp} · Wi-Fi ON` : `${activeIp} · Wi-Fi OFF`}
+              </button>
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 Cloud Active
@@ -1155,6 +1170,17 @@ export default function App() {
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 bg-background/80 px-2.5 py-1 rounded-lg border border-border">
+                  <span className={`w-2 h-2 rounded-full ${isBroadcasting ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`} />
+                  <span className="text-xs font-semibold">
+                    {isBroadcasting ? 'Wi-Fi Broadcast ON' : 'Wi-Fi Broadcast OFF'}
+                  </span>
+                  <Switch
+                    checked={isBroadcasting}
+                    onCheckedChange={toggleBroadcast}
+                    title="Toggle Local Wi-Fi IPP / mDNS Broadcast"
+                  />
+                </div>
                 <Button
                   size="sm"
                   onClick={handlePrintLocalQrCard}

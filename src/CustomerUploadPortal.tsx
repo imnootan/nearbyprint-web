@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase, ShopRecord } from './supabaseClient'
+import { Point2D, detectCardCorners, warpPerspectiveTransform, lazyLoadOpenCV } from './lib/cardDetector'
 
 // -------------------------------------------------------------
 // Bilingual Localization (Professional English & Pure Hindi)
@@ -223,98 +224,9 @@ function applyAdobeScanFilter(canvas: HTMLCanvasElement, filterType: 'bw' | 'col
 }
 
 // -------------------------------------------------------------
-// Closed-Form Projective Homography (cv2.warpPerspective)
+// Projective Homography (OpenCV / Heckbert warpPerspective)
 // -------------------------------------------------------------
-interface Point2D {
-  x: number
-  y: number
-}
-
-function warpPerspective(
-  srcImg: CanvasImageSource,
-  srcW: number,
-  srcH: number,
-  corners: { tl: Point2D; tr: Point2D; br: Point2D; bl: Point2D },
-  outW: number,
-  outH: number
-): HTMLCanvasElement {
-  const tempSrc = document.createElement('canvas')
-  tempSrc.width = srcW
-  tempSrc.height = srcH
-  const sCtx = tempSrc.getContext('2d')!
-  sCtx.drawImage(srcImg, 0, 0)
-  const sData = sCtx.getImageData(0, 0, srcW, srcH)
-
-  const dst = document.createElement('canvas')
-  dst.width = outW
-  dst.height = outH
-  const dCtx = dst.getContext('2d')!
-  const dData = dCtx.createImageData(outW, outH)
-
-  const sp = sData.data
-  const dp = dData.data
-  const { tl, tr, br, bl } = corners
-
-  // Heckbert's Projective Mapping: Unit square (u_n, v_n) -> Quad (sxPt, syPt)
-  const dx1 = tr.x - br.x
-  const dx2 = bl.x - br.x
-  const dy1 = tr.y - br.y
-  const dy2 = bl.y - br.y
-  const sx = tl.x - tr.x + br.x - bl.x
-  const sy = tl.y - tr.y + br.y - bl.y
-
-  let g = 0, h = 0
-  const det = dx1 * dy2 - dx2 * dy1
-  if (Math.abs(det) > 1e-7) {
-    g = (sx * dy2 - sy * dx2) / det
-    h = (dx1 * sy - dy1 * sx) / det
-  }
-  const a = tr.x - tl.x + g * tr.x
-  const b = bl.x - tl.x + h * bl.x
-  const c = tl.x
-  const d = tr.y - tl.y + g * tr.y
-  const e = bl.y - tl.y + h * bl.y
-  const f = tl.y
-
-  for (let y = 0; y < outH; y++) {
-    const vn = y / (outH - 1)
-    const dRow = y * outW * 4
-
-    for (let x = 0; x < outW; x++) {
-      const un = x / (outW - 1)
-      const denom = g * un + h * vn + 1
-      const sxPt = (a * un + b * vn + c) / denom
-      const syPt = (d * un + e * vn + f) / denom
-
-      const x0 = Math.floor(sxPt)
-      const y0 = Math.floor(syPt)
-      const x1 = Math.min(srcW - 1, x0 + 1)
-      const y1 = Math.min(srcH - 1, y0 + 1)
-      const dx = sxPt - x0
-      const dy = syPt - y0
-
-      if (x0 >= 0 && x1 < srcW && y0 >= 0 && y1 < srcH) {
-        const i00 = (y0 * srcW + x0) * 4
-        const i10 = (y0 * srcW + x1) * 4
-        const i01 = (y1 * srcW + x0) * 4
-        const i11 = (y1 * srcW + x1) * 4
-        const dIdx = dRow + (x * 4)
-
-        for (let ch = 0; ch < 4; ch++) {
-          dp[dIdx + ch] = Math.round(
-            (1 - dx) * (1 - dy) * sp[i00 + ch] +
-            dx * (1 - dy) * sp[i10 + ch] +
-            (1 - dx) * dy * sp[i01 + ch] +
-            dx * dy * sp[i11 + ch]
-          )
-        }
-      }
-    }
-  }
-
-  dCtx.putImageData(dData, 0, 0)
-  return dst
-}
+const warpPerspective = warpPerspectiveTransform
 
 export default function CustomerUploadPortal() {
   // Localization
@@ -611,351 +523,12 @@ export default function CustomerUploadPortal() {
   const loupeCanvasRef = useRef<HTMLCanvasElement>(null)
   const dragStartRef = useRef<{ pos: Point2D; corners: Point2D[] } | null>(null)
 
-  // Auto Corner Detection Logic (Adobe Scan Canny + Sobel + approxPolyDP)
-  const runAutoDetect = useCallback((src: HTMLCanvasElement | HTMLImageElement) => {
-    const srcW = 'width' in src ? src.width : (src as HTMLImageElement).naturalWidth
-    const srcH = 'height' in src ? src.height : (src as HTMLImageElement).naturalHeight
-
-    const maxDim = 420
-    const scale = Math.min(1, maxDim / Math.max(srcW, srcH))
-    const tw = Math.max(50, Math.round(srcW * scale))
-    const th = Math.max(50, Math.round(srcH * scale))
-
-    const aCanvas = document.createElement('canvas')
-    aCanvas.width = tw
-    aCanvas.height = th
-    const aCtx = aCanvas.getContext('2d')
-    if (!aCtx) return
-    aCtx.drawImage(src, 0, 0, tw, th)
-    const imgData = aCtx.getImageData(0, 0, tw, th)
-    const d = imgData.data
-
-    // 1. Grayscale
-    const rawGray = new Uint8Array(tw * th)
-    for (let i = 0, j = 0; i < d.length; i += 4, j++) {
-      rawGray[j] = Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])
-    }
-
-    // Separable 5x5 Gaussian Blur: [1, 4, 6, 4, 1] / 16
-    const tempBlur = new Float32Array(tw * th)
-    const blur = new Uint8Array(tw * th)
-    const k5 = [1, 4, 6, 4, 1]
-
-    for (let y = 0; y < th; y++) {
-      const row = y * tw
-      for (let x = 0; x < tw; x++) {
-        let sum = 0, kw = 0
-        for (let i = -2; i <= 2; i++) {
-          const px = Math.min(tw - 1, Math.max(0, x + i))
-          const w = k5[i + 2]
-          sum += rawGray[row + px] * w
-          kw += w
-        }
-        tempBlur[row + x] = sum / kw
-      }
-    }
-
-    for (let y = 0; y < th; y++) {
-      for (let x = 0; x < tw; x++) {
-        let sum = 0, kw = 0
-        for (let j = -2; j <= 2; j++) {
-          const py = Math.min(th - 1, Math.max(0, y + j))
-          const w = k5[j + 2]
-          sum += tempBlur[py * tw + x] * w
-          kw += w
-        }
-        blur[y * tw + x] = Math.round(sum / kw)
-      }
-    }
-
-    // 2. Sobel Gradients
-    const gxArr = new Int32Array(tw * th)
-    const gyArr = new Int32Array(tw * th)
-    const mag = new Float32Array(tw * th)
-    let maxMag = 0
-
-    for (let y = 1; y < th - 1; y++) {
-      const row = y * tw
-      const prev = (y - 1) * tw
-      const next = (y + 1) * tw
-      for (let x = 1; x < tw - 1; x++) {
-        const gx = -blur[prev + x - 1] + blur[prev + x + 1]
-                   - 2 * blur[row + x - 1] + 2 * blur[row + x + 1]
-                   - blur[next + x - 1] + blur[next + x + 1]
-        const gy = -blur[prev + x - 1] - 2 * blur[prev + x] - blur[prev + x + 1]
-                   + blur[next + x - 1] + 2 * blur[next + x] + blur[next + x + 1]
-        gxArr[row + x] = gx
-        gyArr[row + x] = gy
-        const m = Math.hypot(gx, gy)
-        mag[row + x] = m
-        if (m > maxMag) maxMag = m
-      }
-    }
-
-    // Non-Maximum Suppression (NMS)
-    const nms = new Float32Array(tw * th)
-    for (let y = 1; y < th - 1; y++) {
-      const row = y * tw
-      for (let x = 1; x < tw - 1; x++) {
-        const m = mag[row + x]
-        if (m < 5) continue
-        const gx = gxArr[row + x]
-        const gy = gyArr[row + x]
-        let angle = Math.atan2(gy, gx) * (180 / Math.PI)
-        if (angle < 0) angle += 180
-
-        let q0 = 0, q1 = 0
-        if ((angle >= 0 && angle < 22.5) || (angle >= 157.5 && angle <= 180)) {
-          q0 = mag[row + x + 1]
-          q1 = mag[row + x - 1]
-        } else if (angle >= 22.5 && angle < 67.5) {
-          q0 = mag[(y + 1) * tw + x + 1]
-          q1 = mag[(y - 1) * tw + x - 1]
-        } else if (angle >= 67.5 && angle < 112.5) {
-          q0 = mag[(y + 1) * tw + x]
-          q1 = mag[(y - 1) * tw + x]
-        } else if (angle >= 112.5 && angle < 157.5) {
-          q0 = mag[(y + 1) * tw + x - 1]
-          q1 = mag[(y - 1) * tw + x + 1]
-        }
-
-        if (m >= q0 && m >= q1) {
-          nms[row + x] = m
-        }
-      }
-    }
-
-    // Canny Hysteresis Thresholding (75, 200)
-    const lowThresh = Math.max(14, maxMag * (75 / 255))
-    const highThresh = Math.max(35, maxMag * (200 / 255))
-    const edges = new Uint8Array(tw * th)
-    const edgeStack: number[] = []
-
-    for (let y = 1; y < th - 1; y++) {
-      const row = y * tw
-      for (let x = 1; x < tw - 1; x++) {
-        const val = nms[row + x]
-        if (val >= highThresh) {
-          edges[row + x] = 2
-          edgeStack.push(row + x)
-        } else if (val >= lowThresh) {
-          edges[row + x] = 1
-        }
-      }
-    }
-
-    while (edgeStack.length > 0) {
-      const idx = edgeStack.pop()!
-      const cx = idx % tw
-      const cy = Math.floor(idx / tw)
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue
-          const nx = cx + dx, ny = cy + dy
-          if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
-            const nIdx = ny * tw + nx
-            if (edges[nIdx] === 1) {
-              edges[nIdx] = 2
-              edgeStack.push(nIdx)
-            }
-          }
-        }
-      }
-    }
-
-    // 3. Morphological Closing (Dilate 5x5 + Erode 5x5)
-    const binEdges = new Uint8Array(tw * th)
-    for (let i = 0; i < edges.length; i++) {
-      binEdges[i] = edges[i] === 2 ? 1 : 0
-    }
-
-    const dilated = new Uint8Array(tw * th)
-    for (let y = 2; y < th - 2; y++) {
-      for (let x = 2; x < tw - 2; x++) {
-        let hit = 0
-        for (let dy = -2; dy <= 2 && !hit; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            if (binEdges[(y + dy) * tw + (x + dx)] === 1) { hit = 1; break }
-          }
-        }
-        dilated[y * tw + x] = hit
-      }
-    }
-
-    const closed = new Uint8Array(tw * th)
-    for (let y = 2; y < th - 2; y++) {
-      for (let x = 2; x < tw - 2; x++) {
-        let allOn = 1
-        for (let dy = -2; dy <= 2 && allOn; dy++) {
-          for (let dx = -2; dx <= 2; dx++) {
-            if (dilated[(y + dy) * tw + (x + dx)] === 0) { allOn = 0; break }
-          }
-        }
-        closed[y * tw + x] = allOn
-      }
-    }
-
-    // 4. Contour Boundary Extraction
-    const visited = new Uint8Array(tw * th)
-    const candidateContours: Point2D[][] = []
-    const minContourLen = Math.round((tw + th) * 0.22)
-
-    for (let y = 2; y < th - 2; y++) {
-      for (let x = 2; x < tw - 2; x++) {
-        const idx = y * tw + x
-        if (closed[idx] === 1 && !visited[idx]) {
-          const pts: Point2D[] = []
-          const q = [idx]
-          visited[idx] = 1
-          while (q.length > 0) {
-            const curr = q.pop()!
-            const cx = curr % tw
-            const cy = Math.floor(curr / tw)
-            pts.push({ x: cx, y: cy })
-
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue
-                const nx = cx + dx, ny = cy + dy
-                if (nx >= 0 && nx < tw && ny >= 0 && ny < th) {
-                  const nIdx = ny * tw + nx
-                  if (closed[nIdx] === 1 && !visited[nIdx]) {
-                    visited[nIdx] = 1
-                    q.push(nIdx)
-                  }
-                }
-              }
-            }
-          }
-          if (pts.length >= minContourLen) {
-            candidateContours.push(pts)
-          }
-        }
-      }
-    }
-
-    candidateContours.sort((a, b) => b.length - a.length)
-
-    // Convex Hull
-    function getConvexHull(points: Point2D[]): Point2D[] {
-      if (points.length <= 3) return points.slice()
-      const sorted = points.slice().sort((a, b) => a.x === b.x ? a.y - b.y : a.x - b.x)
-      const cross = (o: Point2D, a: Point2D, b: Point2D) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
-      const lower: Point2D[] = []
-      for (const p of sorted) {
-        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop()
-        lower.push(p)
-      }
-      const upper: Point2D[] = []
-      for (let i = sorted.length - 1; i >= 0; i--) {
-        const p = sorted[i]
-        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop()
-        upper.push(p)
-      }
-      lower.pop()
-      upper.pop()
-      return lower.concat(upper)
-    }
-
-    // RDP approxPolyDP
-    function approxPolyDP(pts: Point2D[], eps: number): Point2D[] {
-      if (pts.length <= 2) return pts.slice()
-      let maxD = 0, maxIdx = 0
-      const p1 = pts[0], p2 = pts[pts.length - 1]
-      const dx = p2.x - p1.x, dy = p2.y - p1.y
-      const len = Math.hypot(dx, dy)
-
-      for (let i = 1; i < pts.length - 1; i++) {
-        const d = len < 1e-5 ? Math.hypot(pts[i].x - p1.x, pts[i].y - p1.y) : Math.abs((pts[i].x - p1.x) * dy - (pts[i].y - p1.y) * dx) / len
-        if (d > maxD) { maxD = d; maxIdx = i }
-      }
-
-      if (maxD > eps) {
-        const r1 = approxPolyDP(pts.slice(0, maxIdx + 1), eps)
-        const r2 = approxPolyDP(pts.slice(maxIdx), eps)
-        return r1.slice(0, -1).concat(r2)
-      }
-      return [p1, p2]
-    }
-
-    let detected: Point2D[] | null = null
-    const minArea = tw * th * 0.10
-
-    for (const cnt of candidateContours) {
-      const hull = getConvexHull(cnt)
-      if (hull.length < 4) continue
-
-      let perim = 0
-      for (let i = 0; i < hull.length; i++) {
-        const p1 = hull[i], p2 = hull[(i + 1) % hull.length]
-        perim += Math.hypot(p2.x - p1.x, p2.y - p1.y)
-      }
-
-      for (let epsRatio = 0.015; epsRatio <= 0.055; epsRatio += 0.005) {
-        const closedHull = hull.concat([hull[0]])
-        const approx = approxPolyDP(closedHull, perim * epsRatio)
-        if (approx.length > 1 && approx[0].x === approx[approx.length - 1].x && approx[0].y === approx[approx.length - 1].y) {
-          approx.pop()
-        }
-
-        if (approx.length === 4) {
-          let a = 0
-          for (let i = 0; i < approx.length; i++) {
-            const j = (i + 1) % approx.length
-            a += approx[i].x * approx[j].y - approx[j].x * approx[i].y
-          }
-          const area = Math.abs(a) / 2
-
-          if (area >= minArea) {
-            let tl = approx[0], br = approx[0], tr = approx[0], bl = approx[0]
-            let minSum = Infinity, maxSum = -Infinity
-            let minDiff = Infinity, maxDiff = -Infinity
-            for (const p of approx) {
-              const sum = p.x + p.y
-              const diff = p.y - p.x
-              if (sum < minSum) { minSum = sum; tl = p }
-              if (sum > maxSum) { maxSum = sum; br = p }
-              if (diff < minDiff) { minDiff = diff; tr = p }
-              if (diff > maxDiff) { maxDiff = diff; bl = p }
-            }
-
-            const topW = Math.hypot(tr.x - tl.x, tr.y - tl.y)
-            const botW = Math.hypot(br.x - bl.x, br.y - bl.y)
-            const leftH = Math.hypot(bl.x - tl.x, bl.y - tl.y)
-            const rightH = Math.hypot(br.x - tr.x, br.y - tr.y)
-
-            if (topW > tw * 0.20 && botW > tw * 0.20 && leftH > th * 0.15 && rightH > th * 0.15) {
-              const inv = 1 / scale
-              detected = [
-                { x: Math.max(0, Math.min(srcW, Math.round(tl.x * inv))), y: Math.max(0, Math.min(srcH, Math.round(tl.y * inv))) },
-                { x: Math.max(0, Math.min(srcW, Math.round(tr.x * inv))), y: Math.max(0, Math.min(srcH, Math.round(tr.y * inv))) },
-                { x: Math.max(0, Math.min(srcW, Math.round(br.x * inv))), y: Math.max(0, Math.min(srcH, Math.round(br.y * inv))) },
-                { x: Math.max(0, Math.min(srcW, Math.round(bl.x * inv))), y: Math.max(0, Math.min(srcH, Math.round(bl.y * inv))) }
-              ]
-              break
-            }
-          }
-        }
-      }
-      if (detected) break
-    }
-
-    if (detected) {
-      setCropCorners(detected)
-    } else {
-      // Fallback: standard CR80 centered quad with 8% margin
-      const marginX = Math.round(srcW * 0.08)
-      const cardW = srcW - 2 * marginX
-      const cardH = Math.round(cardW / 1.58577)
-      const startY = Math.max(0, Math.round((srcH - cardH) / 2))
-      setCropCorners([
-        { x: marginX, y: startY },
-        { x: marginX + cardW, y: startY },
-        { x: marginX + cardW, y: Math.min(srcH, startY + cardH) },
-        { x: marginX, y: Math.min(srcH, startY + cardH) }
-      ])
-    }
-  }, [])
+  // Auto Corner Detection Logic (Client-Side OpenCV.js + Canvas Engine)
+  const runAutoDetect = useCallback(async (src: HTMLCanvasElement | HTMLImageElement, target?: 'front' | 'back' | 'doc') => {
+    const tType = target || cropTarget
+    const corners = await detectCardCorners(src, tType)
+    setCropCorners(corners)
+  }, [cropTarget])
 
   // Open Crop Modal
   const openCropModal = (target: 'front' | 'back' | 'doc', e?: React.MouseEvent) => {
@@ -972,7 +545,8 @@ export default function CustomerUploadPortal() {
     if (!src) return
     setCropImgSource(src)
     setCropModalOpen(true)
-    runAutoDetect(src)
+    lazyLoadOpenCV().catch(() => {})
+    runAutoDetect(src, target)
   }
 
   // Draw Crop Canvas
@@ -1320,6 +894,14 @@ export default function CustomerUploadPortal() {
       } else if (cropTarget === 'doc') {
         setDocImageObj(croppedImg)
         setDocPreviewUrl(croppedImg.src)
+        warpedCanvas.toBlob(blob => {
+          if (blob) {
+            const originalName = selectedDocFile?.name || 'document.jpg'
+            const cleanName = originalName.replace(/\.[^/.]+$/, '') + '.jpg'
+            const croppedFile = new File([blob], cleanName, { type: 'image/jpeg' })
+            setSelectedDocFile(croppedFile)
+          }
+        }, 'image/jpeg', 0.95)
       }
       setCropModalOpen(false)
       hideLoupe()
@@ -1331,6 +913,7 @@ export default function CustomerUploadPortal() {
   const handleCardFile = (e: React.ChangeEvent<HTMLInputElement>, side: 'front' | 'back') => {
     const file = e.target.files && e.target.files[0]
     if (!file) return
+    lazyLoadOpenCV().catch(() => {})
     const reader = new FileReader()
     reader.onload = ev => {
       const img = new Image()
@@ -1360,7 +943,7 @@ export default function CustomerUploadPortal() {
         setCropTarget(side)
         setCropImgSource(finalCanvasOrImg)
         setCropModalOpen(true)
-        runAutoDetect(finalCanvasOrImg)
+        runAutoDetect(finalCanvasOrImg, side)
       }
       img.src = ev.target?.result as string
     }
@@ -1375,6 +958,7 @@ export default function CustomerUploadPortal() {
     setSelectedDocFile(file)
 
     if (file.type.startsWith('image/')) {
+      lazyLoadOpenCV().catch(() => {})
       const reader = new FileReader()
       reader.onload = ev => {
         const img = new Image()
@@ -2236,7 +1820,7 @@ export default function CustomerUploadPortal() {
             <button
               type="button"
               onClick={() => {
-                if (cropImgSource) runAutoDetect(cropImgSource)
+                if (cropImgSource) runAutoDetect(cropImgSource, cropTarget)
               }}
               className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs font-semibold border border-slate-700"
             >
@@ -2248,14 +1832,27 @@ export default function CustomerUploadPortal() {
                 if (!cropImgSource) return
                 const w = 'width' in cropImgSource ? cropImgSource.width : (cropImgSource as HTMLImageElement).naturalWidth
                 const h = 'height' in cropImgSource ? cropImgSource.height : (cropImgSource as HTMLImageElement).naturalHeight
-                const mX = Math.round(w * 0.05)
-                const mY = Math.round(h * 0.05)
-                setCropCorners([
-                  { x: mX, y: mY },
-                  { x: w - mX, y: mY },
-                  { x: w - mX, y: h - mY },
-                  { x: mX, y: h - mY }
-                ])
+                if (cropTarget === 'doc') {
+                  const mX = Math.round(w * 0.08)
+                  const mY = Math.round(h * 0.08)
+                  setCropCorners([
+                    { x: mX, y: mY },
+                    { x: w - mX, y: mY },
+                    { x: w - mX, y: h - mY },
+                    { x: mX, y: h - mY }
+                  ])
+                } else {
+                  const marginX = Math.round(w * 0.08)
+                  const cardW = w - 2 * marginX
+                  const cardH = Math.min(Math.round(h * 0.84), Math.round(cardW / 1.58577))
+                  const startY = Math.max(0, Math.round((h - cardH) / 2))
+                  setCropCorners([
+                    { x: marginX, y: startY },
+                    { x: marginX + cardW, y: startY },
+                    { x: marginX + cardW, y: Math.min(h, startY + cardH) },
+                    { x: marginX, y: Math.min(h, startY + cardH) }
+                  ])
+                }
               }}
               className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs font-semibold border border-slate-700"
             >

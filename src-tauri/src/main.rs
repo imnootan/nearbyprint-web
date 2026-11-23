@@ -5202,10 +5202,9 @@ fn main() {
             // is the loopback proxy's job now - but a queue installed by an
             // earlier build points at *this* listener, and leaving it dead is
             // exactly the silent breakage this restore exists to prevent.
-            // Local network IPP port 8631 auto-start removed as per cloud-first architecture.
-            // The desktop app now receives print jobs via Supabase realtime cloud queue.
-            // Broadcasting on 8631 can still be toggled manually from Settings if desired.
-            if false && (broadcast_preference(&handle) || relay_configured) {
+            // Restore local wireless IPP + mDNS printer broadcasting at startup
+            // so phones, Macs, and PCs on the same Wi-Fi immediately find NearbyPrint.
+            if broadcast_preference(&handle) || relay_configured || true {
                 tauri::async_runtime::spawn(async move {
                     let state = handle.state::<AppState>();
                     match toggle_broadcast(handle.clone(), state, true).await {
