@@ -246,8 +246,10 @@ export default function CustomerUploadPortal() {
   // Shop Context from URL
   const [shopId, setShopId] = useState<string>('nootan_prints')
   const [shopDetails, setShopDetails] = useState<ShopRecord | null>(null)
+  const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true)
 
   useEffect(() => {
+    const startTime = Date.now()
     let resolved = ''
     try {
       const search = new URLSearchParams(window.location.search)
@@ -290,6 +292,10 @@ export default function CustomerUploadPortal() {
         }
       } catch {
         // Fallback default
+      } finally {
+        const elapsed = Date.now() - startTime
+        const remaining = Math.max(0, 650 - elapsed)
+        setTimeout(() => setIsInitialLoading(false), remaining)
       }
     }
     fetchShop()
@@ -1138,6 +1144,19 @@ export default function CustomerUploadPortal() {
     setBackProcessed(null)
     setSuccessJob(null)
     setSubmitProgress(0)
+  }
+
+  if (isInitialLoading) {
+    return (
+      <div className="min-h-screen bg-[#090d16] flex flex-col items-center justify-center gap-6 px-4">
+        <div className="w-[88px] h-[88px] rounded-[22px] bg-white flex items-center justify-center shadow-2xl">
+          <div className="loader"></div>
+        </div>
+        <div className="text-slate-400 text-xs font-semibold tracking-wider uppercase">
+          {t.portalTitle}
+        </div>
+      </div>
+    )
   }
 
   return (

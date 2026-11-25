@@ -255,6 +255,7 @@ export default function App() {
   const [supabaseError, setSupabaseError] = useState<string | null>(null)
 
   const [showQrModal, setShowQrModal] = useState(false)
+  const [printStandeeType, setPrintStandeeType] = useState<'cloud' | 'wifi'>('cloud')
 
   // Settings modal & sub-tab
   const [showSettings, setShowSettings] = useState(false)
@@ -647,109 +648,17 @@ export default function App() {
   }
 
   const handlePrintLocalQrCard = () => {
-    const printWindow = window.open('', '_blank', 'width=700,height=800')
-    if (!printWindow) return
-    const qrSvgEl = document.getElementById('local-counter-qr') || document.getElementById('modal-local-qr')
-    const qrSvgHtml = qrSvgEl ? qrSvgEl.outerHTML : ''
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${shopName || 'NearbyPrint'} - Wi-Fi Counter Stand Card</title>
-          <style>
-            body { font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 40px; margin: 0; color: #0f172a; background: white; }
-            .card { border: 3px solid #2563eb; border-radius: 24px; padding: 40px 28px; max-width: 480px; margin: 0 auto; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
-            .badge { display: inline-block; background: #eff6ff; color: #2563eb; font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 999px; margin-bottom: 12px; border: 1px solid #bfdbfe; }
-            .title { font-size: 32px; font-weight: 900; color: #1e3a8a; margin: 0 0 6px; letter-spacing: -0.5px; }
-            .shop-name { font-size: 20px; font-weight: 700; color: #2563eb; margin-bottom: 24px; }
-            .qr-box { display: flex; justify-content: center; margin: 24px 0; }
-            .instructions { font-size: 20px; font-weight: 800; color: #0f172a; margin: 16px 0 6px; }
-            .hindi { font-size: 15px; color: #475569; margin-bottom: 16px; font-weight: 500; }
-            .features { display: flex; justify-content: space-around; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 8px; margin: 20px 0; font-size: 12px; font-weight: 600; color: #334155; }
-            .url { font-family: monospace; font-size: 13px; color: #2563eb; background: #eff6ff; border: 1px solid #bfdbfe; padding: 8px 14px; border-radius: 8px; display: inline-block; word-break: break-all; margin-top: 8px; font-weight: 600; }
-            .footer { margin-top: 28px; font-size: 12px; color: #94a3b8; font-weight: 500; }
-            @media print {
-              body { padding: 10px; }
-              button { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <span class="badge">📶 LOCAL WI-FI SMART PRINT</span>
-            <div class="title">NearbyPrint</div>
-            <div class="shop-name">${shopName}</div>
-            <div class="qr-box">${qrSvgHtml}</div>
-            <div class="instructions">Scan on Shop Wi-Fi to Print</div>
-            <div class="hindi">दुकान के वाई-फ़ाई से कनेक्ट करके स्कैन करें</div>
-            <div class="features">
-              <span>⚡ 100% Offline</span>
-              <span>🔒 Zero WhatsApp Hassle</span>
-              <span>✨ 100% Private</span>
-            </div>
-            <div class="url">${localPortalUrl}</div>
-            <div class="footer">Files automatically deleted immediately after printing.</div>
-          </div>
-          <script>
-            setTimeout(() => { window.print(); }, 400);
-          </script>
-        </body>
-      </html>
-    `)
-    printWindow.document.close()
+    setPrintStandeeType('wifi')
+    setTimeout(() => {
+      window.print()
+    }, 150)
   }
 
   const handlePrintPermanentQrCard = () => {
-    const printWindow = window.open('', '_blank', 'width=700,height=800')
-    if (!printWindow) return
-    const qrSvgEl = document.getElementById('permanent-counter-qr')
-    const qrSvgHtml = qrSvgEl ? qrSvgEl.outerHTML : ''
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${shopName} - Permanent Counter QR</title>
-          <style>
-            body { font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 40px; margin: 0; color: #0f172a; background: white; }
-            .card { border: 3px solid #4f46e5; border-radius: 24px; padding: 40px 28px; max-width: 480px; margin: 0 auto; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
-            .badge { display: inline-block; background: #eef2ff; color: #4f46e5; font-size: 13px; font-weight: 700; padding: 6px 14px; border-radius: 999px; margin-bottom: 12px; border: 1px solid #c7d2fe; }
-            .title { font-size: 32px; font-weight: 900; color: #1e1b4b; margin: 0 0 6px; letter-spacing: -0.5px; }
-            .shop-name { font-size: 20px; font-weight: 700; color: #4f46e5; margin-bottom: 24px; }
-            .qr-box { display: flex; justify-content: center; margin: 24px 0; }
-            .instructions { font-size: 20px; font-weight: 800; color: #0f172a; margin: 16px 0 6px; }
-            .hindi { font-size: 15px; color: #475569; margin-bottom: 16px; font-weight: 500; }
-            .features { display: flex; justify-content: space-around; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 8px; margin: 20px 0; font-size: 12px; font-weight: 600; color: #334155; }
-            .url { font-family: monospace; font-size: 13px; color: #4f46e5; background: #f5f3ff; border: 1px solid #ddd6fe; padding: 8px 14px; border-radius: 8px; display: inline-block; word-break: break-all; margin-top: 8px; font-weight: 600; }
-            .footer { margin-top: 28px; font-size: 12px; color: #94a3b8; font-weight: 500; }
-            @media print {
-              body { padding: 10px; }
-              button { display: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <span class="badge">🌐 SELF-SERVICE SMART PRINT</span>
-            <div class="title">NearbyPrint</div>
-            <div class="shop-name">${shopName}</div>
-            <div class="qr-box">${qrSvgHtml}</div>
-            <div class="instructions">Scan to Print Directly from Phone</div>
-            <div class="hindi">फ़ोन कैमरा से स्कैन करके सीधे प्रिंट भेजें</div>
-            <div class="features">
-              <span>⚡ No Wi-Fi Needed</span>
-              <span>🔒 Zero WhatsApp Hassle</span>
-              <span>✨ 100% Private</span>
-            </div>
-            <div class="url">${permanentCustomerUrl}</div>
-            <div class="footer">Files automatically deleted immediately after printing.</div>
-          </div>
-          <script>
-            setTimeout(() => { window.print(); }, 400);
-          </script>
-        </body>
-      </html>
-    `)
-    printWindow.document.close()
+    setPrintStandeeType('cloud')
+    setTimeout(() => {
+      window.print()
+    }, 150)
   }
 
   const maybeAutoPrint = (job: PrintJob) => {
@@ -1057,7 +966,8 @@ export default function App() {
   const wirelessIppUrl = `ipp://${activeIp}:${activePort}/ipp/print`
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
+    <>
+    <div id="app-main-ui" className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-3.5 border-b border-border bg-card/60 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-3">
@@ -1937,7 +1847,31 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 5. Wi-Fi Stand Card */}
+                  {/* 5. Local Wi-Fi Auto-Print Controls */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/40 border border-border">
+                      <div className="flex items-center gap-2">
+                        <Wifi className="w-3.5 h-3.5 text-sky-500" />
+                        <span className="text-xs font-semibold">Auto-Print: Wi-Fi Direct</span>
+                      </div>
+                      <Switch
+                        checked={autoPrintWifi}
+                        onCheckedChange={setAutoPrintWifi}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/40 border border-border">
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-3.5 h-3.5 text-purple-500" />
+                        <span className="text-xs font-semibold">Auto-Print: Web Portal</span>
+                      </div>
+                      <Switch
+                        checked={autoPrintWeb}
+                        onCheckedChange={setAutoPrintWeb}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 6. Wi-Fi Stand Card */}
                   <div className="flex justify-end pt-1">
                     <Button
                       variant="outline"
@@ -1986,5 +1920,115 @@ export default function App() {
         </div>
       )}
     </div>
+
+    {/* Printable Counter Standee Card (Visible only during Print / PDF Export) */}
+    <div id="standee-print-area">
+      <div
+        style={{
+          border: `3px solid ${printStandeeType === 'wifi' ? '#2563eb' : '#4f46e5'}`,
+          borderRadius: '24px',
+          padding: '38px 28px',
+          maxWidth: '460px',
+          width: '100%',
+          margin: '0 auto',
+          textAlign: 'center',
+          background: '#ffffff',
+          color: '#0f172a',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        }}
+      >
+        <div
+          style={{
+            display: 'inline-block',
+            background: printStandeeType === 'wifi' ? '#eff6ff' : '#eef2ff',
+            color: printStandeeType === 'wifi' ? '#2563eb' : '#4f46e5',
+            fontSize: '12px',
+            fontWeight: 800,
+            padding: '6px 14px',
+            borderRadius: '999px',
+            marginBottom: '12px',
+            border: `1px solid ${printStandeeType === 'wifi' ? '#bfdbfe' : '#c7d2fe'}`,
+            letterSpacing: '0.04em',
+          }}
+        >
+          {printStandeeType === 'wifi' ? '📶 LOCAL WI-FI SMART PRINT' : '🌐 SELF-SERVICE SMART PRINT'}
+        </div>
+
+        <div style={{ fontSize: '32px', fontWeight: 900, color: '#1e1b4b', margin: '0 0 4px', letterSpacing: '-0.5px' }}>
+          NearbyPrint
+        </div>
+
+        <div
+          style={{
+            fontSize: '20px',
+            fontWeight: 700,
+            color: printStandeeType === 'wifi' ? '#2563eb' : '#4f46e5',
+            marginBottom: '22px',
+          }}
+        >
+          {shopName || 'NearbyPrint Counter'}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'center', margin: '20px 0' }}>
+          <div style={{ padding: '14px', background: '#ffffff', border: '2px solid #e2e8f0', borderRadius: '18px' }}>
+            <QRCodeSVG
+              value={printStandeeType === 'wifi' ? localPortalUrl : permanentCustomerUrl}
+              size={220}
+              level="M"
+              includeMargin={false}
+            />
+          </div>
+        </div>
+
+        <div style={{ fontSize: '21px', fontWeight: 800, color: '#0f172a', margin: '14px 0 6px' }}>
+          Scan to Print — Safe, Easy &amp; Fast
+        </div>
+        <div style={{ fontSize: '14px', color: '#475569', marginBottom: '18px', fontWeight: 600 }}>
+          फ़ोन कैमरा से स्कैन करके सीधे प्रिंट भेजें — सुरक्षित, आसान और तेज़
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-around',
+            background: '#f8fafc',
+            border: '1px solid #e2e8f0',
+            borderRadius: '12px',
+            padding: '12px 8px',
+            margin: '16px 0',
+            fontSize: '12px',
+            fontWeight: 700,
+            color: '#334155',
+          }}
+        >
+          <span>🔒 100% Safe</span>
+          <span>✨ Easy 1-Tap</span>
+          <span>⚡ Fast Print</span>
+        </div>
+
+        <div
+          style={{
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            color: printStandeeType === 'wifi' ? '#2563eb' : '#4f46e5',
+            background: printStandeeType === 'wifi' ? '#eff6ff' : '#f5f3ff',
+            border: `1px solid ${printStandeeType === 'wifi' ? '#bfdbfe' : '#ddd6fe'}`,
+            padding: '8px 14px',
+            borderRadius: '8px',
+            display: 'inline-block',
+            wordBreak: 'break-all',
+            marginTop: '6px',
+            fontWeight: 600,
+          }}
+        >
+          {printStandeeType === 'wifi' ? localPortalUrl : permanentCustomerUrl}
+        </div>
+
+        <div style={{ marginTop: '22px', fontSize: '11px', color: '#64748b', fontWeight: 500 }}>
+          Files are automatically deleted immediately after printing.
+        </div>
+      </div>
+    </div>
+    </>
   )
 }
