@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { supabase, ShopRecord } from './supabaseClient'
+import { supabase, ShopRecord, isShopLive } from './supabaseClient'
 import { Point2D, detectCardCorners, warpPerspectiveTransform, lazyLoadOpenCV } from './lib/cardDetector'
 
 // -------------------------------------------------------------
@@ -247,6 +247,18 @@ export default function CustomerUploadPortal() {
   const [shopId, setShopId] = useState<string>('nootan_prints')
   const [shopDetails, setShopDetails] = useState<ShopRecord | null>(null)
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true)
+  const [isShopOnline, setIsShopOnline] = useState<boolean>(true)
+  const [clientSessionId] = useState<string>(() => {
+    try {
+      const existing = localStorage.getItem('nearby_client_session_id')
+      if (existing) return existing
+      const generated = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      localStorage.setItem('nearby_client_session_id', generated)
+      return generated
+    } catch {
+      return `sess_${Date.now()}`
+    }
+  })
 
   useEffect(() => {
     const startTime = Date.now()
@@ -272,8 +284,8 @@ export default function CustomerUploadPortal() {
     setShopId(resolved)
     localStorage.setItem('nearby_last_visited_shop', resolved)
 
-    // Load shop details
-    const fetchShop = async () => {
+    // Load shop details and check 90-second heartbeat
+    const fetchShop = async (isFirst = false) => {
       try {
         const { data } = await supabase
           .from('shops')
@@ -283,22 +295,29 @@ export default function CustomerUploadPortal() {
 
         if (data) {
           setShopDetails(data)
+          // Check if last_active_at is within 90 seconds
+          setIsShopOnline(isShopLive((data as ShopRecord).last_active_at))
         } else {
           setShopDetails({
             shop_unique_id: resolved,
             shop_name: resolved.replace(/_/g, ' ').toUpperCase(),
             owner_name: 'Store Counter'
           })
+          setIsShopOnline(false)
         }
       } catch {
         // Fallback default
       } finally {
-        const elapsed = Date.now() - startTime
-        const remaining = Math.max(0, 650 - elapsed)
-        setTimeout(() => setIsInitialLoading(false), remaining)
+        if (isFirst) {
+          const elapsed = Date.now() - startTime
+          const remaining = Math.max(0, 650 - elapsed)
+          setTimeout(() => setIsInitialLoading(false), remaining)
+        }
       }
     }
-    fetchShop()
+    fetchShop(true)
+    const heartbeatCheck = setInterval(() => fetchShop(false), 20_000)
+    return () => clearInterval(heartbeatCheck)
   }, [])
 
   // Form State
@@ -1069,6 +1088,34 @@ export default function CustomerUploadPortal() {
     }
 
     try {
+      // 0A. Check Shop Online Heartbeat
+      const { data: latestShop } = await supabase
+        .from('shops')
+        .select('last_active_at')
+        .eq('shop_unique_id', shopId)
+        .maybeSingle()
+
+      if (latestShop && !isShopLive((latestShop as ShopRecord).last_active_at)) {
+        setIsShopOnline(false)
+        alert('Shop Counter is currently Offline. Please ask the shopkeeper to open NearbyPrint.')
+        setIsSubmitting(false)
+        return
+      }
+
+      // 0B. Rate Limit Check (Max 3 pending jobs per client_session_id)
+      const { count: pendingCount, error: countErr } = await supabase
+        .from('print_jobs')
+        .select('id', { count: 'exact', head: true })
+        .eq('shop_unique_id', shopId)
+        .eq('status', 'pending')
+        .eq('client_session_id', clientSessionId)
+
+      if (!countErr && (pendingCount ?? 0) >= 3) {
+        alert('Rate limit reached: You already have 3 pending print jobs. Please wait for the shopkeeper to print or reject them.')
+        setIsSubmitting(false)
+        return
+      }
+
       setSubmitProgress(45)
       const cleanFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
       const timestamp = Date.now()
@@ -1103,8 +1150,8 @@ export default function CustomerUploadPortal() {
       const printDetailsStr = `${copies} ${copies > 1 ? 'Copies' : 'Copy'} · ${colorMode === 'bw' ? 'B&W' : 'Color'} · ${paperSize} (${orientation})${isCard ? ' · CR80 ' + cardLayout : ' · ' + (docSides === 'single' ? '1-Sided' : 'Duplex')}`
       const formattedCustomer = `${trimmedName} [${printDetailsStr}]`
 
-      // 4. Insert row into print_jobs table
-      const { error: jobError } = await supabase
+      // 4. Insert row into print_jobs table (with client_session_id for anti-spam rate limiting)
+      let { error: jobError } = await supabase
         .from('print_jobs')
         .insert([
           {
@@ -1112,8 +1159,24 @@ export default function CustomerUploadPortal() {
             customer_name: formattedCustomer,
             file_url: fileUrl,
             status: 'pending',
+            client_session_id: clientSessionId,
           }
         ])
+
+      // Graceful fallback if client_session_id column has not been migrated yet
+      if (jobError && jobError.message?.toLowerCase().includes('client_session_id')) {
+        const retry = await supabase
+          .from('print_jobs')
+          .insert([
+            {
+              shop_unique_id: shopId,
+              customer_name: formattedCustomer,
+              file_url: fileUrl,
+              status: 'pending',
+            }
+          ])
+        jobError = retry.error
+      }
 
       if (jobError) {
         console.error('Database insert error:', jobError)
@@ -1192,17 +1255,41 @@ export default function CustomerUploadPortal() {
             🌐 <span>{t.langLabel}</span>
           </button>
 
-          {/* Cloud Online Badge (Green dot requested) */}
-          <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{t.cloudBadge}</span>
-          </div>
+          {/* Cloud Online / Offline Badge */}
+          {isShopOnline ? (
+            <div className="bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>{t.cloudBadge}</span>
+            </div>
+          ) : (
+            <div className="bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-red-500" />
+              <span>Counter Offline</span>
+            </div>
+          )}
         </div>
       </header>
 
       {/* Main Container */}
       <div className="max-w-[520px] mx-auto px-4 mt-4">
-        {!successJob ? (
+        {!isShopOnline ? (
+          <div className="bg-[#131b2e] border border-red-500/40 rounded-2xl p-6 sm:p-8 shadow-xl text-center flex flex-col items-center gap-4">
+            <div className="w-14 h-14 rounded-full bg-red-500/15 border border-red-500/30 flex items-center justify-center text-2xl">
+              🔒
+            </div>
+            <h2 className="text-lg font-bold text-white">Counter Offline</h2>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Shop Counter is currently Offline. Please ask the shopkeeper to open NearbyPrint.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors"
+            >
+              🔄 Check Again
+            </button>
+          </div>
+        ) : !successJob ? (
           <div className="bg-[#131b2e] border border-[#1e293b] rounded-2xl p-4 sm:p-5 shadow-xl">
             {/* Customer Name */}
             <div className="mb-4">

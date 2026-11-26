@@ -5,8 +5,10 @@ import {
   Printer, Settings, Wifi, FileText, Check, X, Moon, Sun,
   Copy, AlertTriangle, Loader2, FolderOpen, ChevronRight, RefreshCw, Plus, Send,
   QrCode, Globe, ShieldCheck, ShieldAlert, Network, HelpCircle, Palette, Monitor,
-  Cloud, Store, ExternalLink, Volume2, Sparkles, CheckCircle2
+  Cloud, Store, ExternalLink, Volume2, Sparkles, CheckCircle2,
+  Lock, LogOut, Mail, Phone, MessageSquare, Laptop, ArrowRightLeft
 } from 'lucide-react'
+import type { Session } from '@supabase/supabase-js'
 import { QRCodeSVG } from 'qrcode.react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -256,6 +258,23 @@ export default function App() {
 
   const [showQrModal, setShowQrModal] = useState(false)
   const [printStandeeType, setPrintStandeeType] = useState<'cloud' | 'wifi'>('cloud')
+  const [showHelpModal, setShowHelpModal] = useState(false)
+  const [isRejectingAll, setIsRejectingAll] = useState(false)
+
+  // Shop Owner Auth & Permanent Shop ID Lock
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authSession, setAuthSession] = useState<Session | null>(null)
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authError, setAuthError] = useState('')
+  const [authMessage, setAuthMessage] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
+  const [shopLocked, setShopLocked] = useState<boolean>(() => {
+    const savedId = localStorage.getItem('nearby_shop_unique_id')
+    const isConfigured = localStorage.getItem('nearby_shop_configured') === 'true'
+    return localStorage.getItem('nearby_shop_locked') === 'true' || Boolean(savedId && isConfigured)
+  })
 
   // Settings modal & sub-tab
   const [showSettings, setShowSettings] = useState(false)
@@ -543,6 +562,111 @@ export default function App() {
     }
   }, [shopId])
 
+  // Supabase Auth Session + Load Shop by user_id
+  useEffect(() => {
+    const syncShopForUser = async (session: Session | null) => {
+      setAuthSession(session)
+      if (!session?.user) {
+        setAuthLoading(false)
+        return
+      }
+      try {
+        const { data: userShop } = await supabase
+          .from('shops')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .maybeSingle()
+
+        if (userShop && (userShop as ShopRecord).shop_unique_id) {
+          const rec = userShop as ShopRecord
+          setShopId(rec.shop_unique_id)
+          setShopName(rec.shop_name || '')
+          setOwnerName(rec.owner_name || '')
+          setShopLocked(true)
+          setShowShopModal(false)
+          localStorage.setItem('nearby_shop_unique_id', rec.shop_unique_id)
+          localStorage.setItem('nearby_shop_name', rec.shop_name || '')
+          localStorage.setItem('nearby_owner_name', rec.owner_name || '')
+          localStorage.setItem('nearby_shop_configured', 'true')
+          localStorage.setItem('nearby_shop_locked', 'true')
+        }
+      } catch {
+        // Fallback: if user_id column isn't migrated yet, keep localStorage shop
+      } finally {
+        setAuthLoading(false)
+      }
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      syncShopForUser(data.session)
+    })
+
+    const { data: authSub } = supabase.auth.onAuthStateChange((_event, session) => {
+      syncShopForUser(session)
+    })
+
+    return () => {
+      authSub.subscription.unsubscribe()
+    }
+  }, [])
+
+  // Desktop App Heartbeat: Update shops.last_active_at every 30 seconds while app is open
+  useEffect(() => {
+    const activeShopId = (shopId || '').trim().toLowerCase()
+    if (!activeShopId || !authSession?.user) return
+
+    const sendHeartbeat = async () => {
+      try {
+        await supabase
+          .from('shops')
+          .update({ last_active_at: new Date().toISOString() })
+          .eq('shop_unique_id', activeShopId)
+      } catch {
+        // Ignore transient network errors
+      }
+    }
+
+    sendHeartbeat()
+    const hb = setInterval(sendHeartbeat, 30_000)
+    return () => clearInterval(hb)
+  }, [shopId, authSession?.user?.id])
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAuthError('')
+    setAuthMessage('')
+    setAuthBusy(true)
+    try {
+      if (authMode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: authEmail.trim(),
+          password: authPassword,
+        })
+        if (error) throw error
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email: authEmail.trim(),
+          password: authPassword,
+        })
+        if (error) throw error
+        if (!data.session) {
+          setAuthMessage('Account created! Please check your email to verify, or sign in now.')
+          setAuthMode('login')
+        }
+      }
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : 'Authentication failed')
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    setAuthSession(null)
+    setShowSettings(false)
+  }
+
   const handleSaveShop = async () => {
     const trimmedShopName = shopName.trim()
     if (!trimmedShopName) {
@@ -564,21 +688,41 @@ export default function App() {
       localStorage.setItem('nearby_owner_name', ownerName.trim())
       localStorage.setItem('nearby_public_app_url', cleanUrl)
       localStorage.setItem('nearby_shop_configured', 'true')
+      localStorage.setItem('nearby_shop_locked', 'true')
       setShopId(cleanId)
       setShopName(trimmedShopName)
       setPublicAppUrl(cleanUrl)
+      setShopLocked(true)
 
-      // Upsert to Supabase shops table
-      const { error } = await supabase
+      // Upsert to Supabase shops table with user_id & last_active_at
+      const fullPayload: Record<string, unknown> = {
+        shop_unique_id: cleanId,
+        shop_name: trimmedShopName,
+        owner_name: ownerName.trim() || 'Store Counter',
+        last_active_at: new Date().toISOString(),
+      }
+      if (authSession?.user?.id) {
+        fullPayload.user_id = authSession.user.id
+      }
+
+      let { error } = await supabase
         .from('shops')
-        .upsert(
-          {
-            shop_unique_id: cleanId,
-            shop_name: trimmedShopName,
-            owner_name: ownerName.trim() || 'Store Counter',
-          },
-          { onConflict: 'shop_unique_id' }
-        )
+        .upsert(fullPayload, { onConflict: 'shop_unique_id' })
+
+      // Graceful fallback if user_id or last_active_at columns aren't migrated yet
+      if (error && (error.message?.includes('user_id') || error.message?.includes('last_active_at'))) {
+        const fallback = await supabase
+          .from('shops')
+          .upsert(
+            {
+              shop_unique_id: cleanId,
+              shop_name: trimmedShopName,
+              owner_name: ownerName.trim() || 'Store Counter',
+            },
+            { onConflict: 'shop_unique_id' }
+          )
+        error = fallback.error
+      }
 
       if (error) throw error
 
@@ -932,6 +1076,41 @@ export default function App() {
     }
   }
 
+  // Reject all pending jobs and immediately clean up Supabase temp_docs files
+  const handleRejectAllPending = async () => {
+    const pendingList = jobs.filter(j => j.status === 'pending')
+    if (pendingList.length === 0 || isRejectingAll) return
+    setIsRejectingAll(true)
+    try {
+      const cloudJobs = pendingList.filter(j => j.channel === 'cloud' && j.cloud_job_id)
+      const cloudIds = cloudJobs.map(j => j.cloud_job_id as string)
+      if (cloudIds.length > 0) {
+        await supabase
+          .from('print_jobs')
+          .update({ status: 'rejected' })
+          .in('id', cloudIds)
+
+        await Promise.all(
+          cloudJobs.map(j => (j.file_url ? deleteTempDoc(j.file_url) : Promise.resolve(false)))
+        )
+      }
+
+      const localJobs = pendingList.filter(j => j.channel !== 'cloud')
+      for (const lj of localJobs) {
+        await invoke('cancel_job', { jobId: Number(lj.id) }).catch(() => {})
+      }
+
+      const rejectedIds = new Set(pendingList.map(j => j.id))
+      setJobs(prev =>
+        prev.map(j => (rejectedIds.has(j.id) ? { ...j, status: 'canceled', message: 'Rejected (Bulk)' } : j))
+      )
+    } catch (err) {
+      console.error('Reject All error:', err)
+    } finally {
+      setIsRejectingAll(false)
+    }
+  }
+
   const selectRelayHost = async (chosen: string) => {
     if (isSavingRelay) return
     setIsSavingRelay(true)
@@ -965,6 +1144,103 @@ export default function App() {
 
   const wirelessIppUrl = `ipp://${activeIp}:${activePort}/ipp/print`
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center gap-4">
+        <div className="w-[84px] h-[84px] rounded-[20px] bg-white flex items-center justify-center shadow-2xl">
+          <div className="loader"></div>
+        </div>
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Loading NearbyPrint…</span>
+      </div>
+    )
+  }
+
+  if (!authSession) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-2xl flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-500/15 text-indigo-500 rounded-xl border border-indigo-500/30">
+              <Printer className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold tracking-tight">NearbyPrint</h1>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-500 border border-indigo-500/30">
+                  BETA
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {authMode === 'login' ? 'Shop Owner Sign In' : 'Create Shop Owner Account'}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1 bg-muted/60 p-1 rounded-xl border border-border text-xs">
+            <button
+              type="button"
+              onClick={() => { setAuthMode('login'); setAuthError(''); setAuthMessage('') }}
+              className={`py-1.5 rounded-lg font-semibold transition-all ${authMode === 'login' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => { setAuthMode('signup'); setAuthError(''); setAuthMessage('') }}
+              className={`py-1.5 rounded-lg font-semibold transition-all ${authMode === 'signup' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'}`}
+            >
+              Sign Up
+            </button>
+          </div>
+
+          {authError && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 text-xs font-medium">
+              {authError}
+            </div>
+          )}
+          {authMessage && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-medium">
+              {authMessage}
+            </div>
+          )}
+
+          <form onSubmit={handleAuthSubmit} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold">Email Address</label>
+              <Input
+                type="email"
+                required
+                value={authEmail}
+                onChange={e => setAuthEmail(e.target.value)}
+                placeholder="shop@example.com"
+                className="text-xs"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold">Password</label>
+              <Input
+                type="password"
+                required
+                minLength={6}
+                value={authPassword}
+                onChange={e => setAuthPassword(e.target.value)}
+                placeholder="••••••••"
+                className="text-xs"
+              />
+            </div>
+            <Button
+              type="submit"
+              disabled={authBusy}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs h-10 mt-1"
+            >
+              {authBusy ? 'Please wait…' : authMode === 'login' ? 'Sign In to Shop Counter' : 'Create Shop Account'}
+            </Button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
     <div id="app-main-ui" className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-200">
@@ -981,27 +1257,26 @@ export default function App() {
                 BETA
               </span>
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Cloud Active
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Online
               </span>
             </div>
             {shopName ? (
-              <button
-                type="button"
-                onClick={() => setShowShopModal(true)}
-                className="text-xs text-muted-foreground hover:text-foreground truncate max-w-[340px] text-left flex items-center gap-1 group mt-0.5"
-                title="Click to edit shop details"
-              >
-                <span>{shopName} {ownerName ? `(${ownerName})` : ''} · {deviceName || 'Smart Print Counter'}</span>
-                <span className="text-[10px] text-indigo-500 opacity-60 group-hover:opacity-100">✏️</span>
-              </button>
+              <div className="text-xs text-muted-foreground truncate max-w-[340px] text-left flex items-center gap-1.5 mt-0.5">
+                <span>{shopName} {ownerName ? `(${ownerName})` : ''}</span>
+                {shopLocked && (
+                  <span className="inline-flex items-center gap-0.5 text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground" title="Permanent Shop ID Locked">
+                    <Lock className="w-2.5 h-2.5" /> {shopId}
+                  </span>
+                )}
+              </div>
             ) : (
               <button
                 type="button"
                 onClick={() => setShowShopModal(true)}
                 className="text-xs font-semibold text-amber-500 hover:text-amber-400 flex items-center gap-1 mt-0.5 animate-pulse text-left"
               >
-                ⚠️ Click here to set your Shop Name &amp; QR
+                ⚠️ Click here to set your Shop Name &amp; Shop ID
               </button>
             )}
           </div>
@@ -1025,8 +1300,18 @@ export default function App() {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setShowHelpModal(true)}
+            className="gap-1.5 h-9 font-medium shadow-sm"
+            title="Help & Support"
+          >
+            <HelpCircle className="w-4 h-4 text-sky-500" />
+            <span className="hidden sm:inline">Help</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setShowSettings(true)}
-            className="gap-2 ml-1 h-9 font-medium shadow-sm"
+            className="gap-2 h-9 font-medium shadow-sm"
           >
             <Settings className="w-4 h-4 text-primary" />
             <span>Settings</span>
@@ -1035,30 +1320,174 @@ export default function App() {
       </header>
 
       <main className="flex-1 max-w-3xl mx-auto w-full flex flex-col gap-5 px-5 py-5">
-        {/* PERMANENT CLOUD SAAS COUNTER & QR CODE */}
+        {/* CLEAN COUNTER SWITCHER */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-xl border border-border text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setCounterTab('cloud')
+                localStorage.setItem('nearby_counter_tab', 'cloud')
+              }}
+              className={`px-3.5 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
+                counterTab !== 'wifi'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Cloud className="w-3.5 h-3.5" />
+              Cloud Counter
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCounterTab('wifi')
+                localStorage.setItem('nearby_counter_tab', 'wifi')
+              }}
+              className={`px-3.5 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 transition-all ${
+                counterTab === 'wifi'
+                  ? 'bg-sky-600 text-white shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Wifi className="w-3.5 h-3.5" />
+              Local Wi-Fi
+            </button>
+          </div>
+        </div>
+
+        {/* LOCAL WI-FI & WINDOWS-TO-WINDOWS LAN PRINTER SHARING */}
+        {counterTab === 'wifi' && (
+          <section className="bg-gradient-to-br from-card via-card to-sky-500/5 border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                  <Wifi className="w-4 h-4 text-sky-500" />
+                  <h2 className="text-base font-bold">Local Wi-Fi</h2>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Share printers across Windows PCs on the same Wi-Fi / LAN without internet.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handlePrintLocalQrCard}
+                className="gap-1.5 text-xs h-8"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Print Wi-Fi Standee
+              </Button>
+            </div>
+
+            <div className="p-4 bg-muted/40 border border-border rounded-xl flex flex-col gap-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <ArrowRightLeft className="w-4 h-4 text-sky-500" />
+                  <span className="text-xs font-bold">Windows-to-Windows LAN Printer Bridge</span>
+                </div>
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${relayStatus.forwarding ? 'bg-sky-500/15 text-sky-500' : 'bg-emerald-500/15 text-emerald-500'}`}>
+                  {relayStatus.forwarding ? `Forwarding → ${relayStatus.host}` : 'Host Mode (This PC Prints)'}
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <HostOption
+                  title="This PC (Share local printer over Wi-Fi / LAN)"
+                  subtitle={`Broadcasting as '${deviceName || 'NearbyPrint'}' at ${wirelessIppUrl}`}
+                  selected={!relayStatus.forwarding}
+                  disabled={isSavingRelay}
+                  onSelect={() => selectRelayHost('')}
+                />
+                {discoveredHosts.map(h => (
+                  <HostOption
+                    key={h.host}
+                    title={`Send to ${h.name}`}
+                    subtitle={`Windows LAN PC · ${h.ip}:${h.port}`}
+                    address={h.ip}
+                    selected={relayStatus.forwarding && relayStatus.host === h.host}
+                    disabled={isSavingRelay}
+                    onSelect={() => selectRelayHost(h.host)}
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 pt-1 flex-wrap">
+                <Input
+                  value={relayHost}
+                  onChange={e => setRelayHost(e.target.value)}
+                  placeholder="Enter another Windows PC IP (e.g. 192.168.1.15)"
+                  className="font-mono text-xs h-8 flex-1 min-w-[200px]"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isSavingRelay || !relayHost.trim()}
+                  onClick={() => selectRelayHost(relayHost.trim())}
+                  className="h-8 text-xs gap-1"
+                >
+                  <Laptop className="w-3.5 h-3.5" />
+                  Connect PC
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={relayBusy}
+                  onClick={async () => {
+                    setRelayBusy(true)
+                    try {
+                      await invoke('add_to_windows')
+                    } catch (e) {
+                      console.warn(e)
+                    } finally {
+                      setRelayBusy(false)
+                    }
+                  }}
+                  className="h-8 text-xs text-sky-500"
+                  title="Install virtual IPP printer in Windows"
+                >
+                  + Add Virtual Printer
+                </Button>
+              </div>
+              {relayResult && (
+                <div className={`text-[11px] font-medium ${relayResult.ok ? 'text-emerald-500' : 'text-red-500'}`}>
+                  {relayResult.message}
+                </div>
+              )}
+              {relayWarning && (
+                <div className="text-[11px] text-amber-500">{relayWarning}</div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* CLOUD COUNTER & QR CODE */}
+        {counterTab !== 'wifi' && (
         <section className="bg-gradient-to-br from-card via-card to-indigo-500/5 border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-4">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex flex-col gap-0.5">
                 <div className="flex items-center gap-2">
                   <Cloud className="w-4 h-4 text-indigo-500" />
                   <h2 className="text-base font-bold">
-                    Permanent Cloud Counter (Any Internet / 4G / 5G / Broadband)
+                    Cloud Counter
                   </h2>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Customers can send prints over 4G/5G/Broadband from anywhere directly to this counter.
+                  Scan to Print — Safe, Easy &amp; Fast
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowShopModal(true)}
-                  className="gap-1.5 text-xs h-8"
-                >
-                  <Store className="w-3.5 h-3.5 text-indigo-500" />
-                  Edit Shop ID
-                </Button>
+                {!shopLocked && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowShopModal(true)}
+                    className="gap-1.5 text-xs h-8"
+                  >
+                    <Store className="w-3.5 h-3.5 text-indigo-500" />
+                    Set Shop ID
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   onClick={handlePrintPermanentQrCard}
@@ -1163,6 +1592,7 @@ export default function App() {
               </div>
             </div>
           </section>
+        )}
 
         {/* SECTION 2: DUAL PRINTER ASSIGNMENT (B&W vs COLOR) */}
         <section className="bg-card border border-border rounded-2xl p-5 shadow-sm flex flex-col gap-3">
@@ -1284,23 +1714,37 @@ export default function App() {
                 </button>
               )}
             </div>
+
+            {pendingJobs.length > 0 && (
+              <Button
+                size="sm"
+                onClick={handleRejectAllPending}
+                disabled={isRejectingAll}
+                className="h-8 px-3 text-xs bg-red-600 hover:bg-red-700 text-white font-semibold gap-1.5 shadow-sm"
+              >
+                <X className="w-3.5 h-3.5" />
+                {isRejectingAll ? 'Rejecting…' : `Reject All (${pendingJobs.length})`}
+              </Button>
+            )}
           </div>
 
           {/* Cloud Polling Status & Supabase Error Notification */}
           <div className="flex flex-wrap items-center justify-between gap-2 bg-card/60 border border-border px-3 py-2 rounded-xl text-xs">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-muted-foreground font-medium">Cloud Polling (every 3s):</span>
+              <span className="text-muted-foreground font-medium">Shop ID:</span>
               <span className="font-mono bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-md font-semibold">
-                shop_unique_id = {shopId || '(Not Set)'}
+                {shopId || '(Not Set)'}
               </span>
-              <button
-                type="button"
-                onClick={() => setShowShopModal(true)}
-                className="text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 underline font-semibold ml-1 cursor-pointer"
-              >
-                Change Shop ID
-              </button>
+              {!shopLocked && (
+                <button
+                  type="button"
+                  onClick={() => setShowShopModal(true)}
+                  className="text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 underline font-semibold ml-1 cursor-pointer"
+                >
+                  Set Shop ID
+                </button>
+              )}
             </div>
             {supabaseError ? (
               <span className="text-red-500 dark:text-red-400 font-bold flex items-center gap-1.5 bg-red-500/10 px-2.5 py-1 rounded-md border border-red-500/20">
@@ -1528,14 +1972,22 @@ export default function App() {
               </div>
 
               <div>
-                <label className="font-semibold block mb-1">
-                  Permanent Shop Unique ID (URL Slug) <span className="text-red-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold">
+                    Permanent Shop ID <span className="text-red-500">*</span>
+                  </label>
+                  {shopLocked && (
+                    <span className="text-[10px] font-bold text-amber-500 inline-flex items-center gap-1">
+                      <Lock className="w-2.5 h-2.5" /> Locked
+                    </span>
+                  )}
+                </div>
                 <Input
                   value={shopId}
-                  onChange={e => setShopId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
+                  disabled={shopLocked}
+                  onChange={e => !shopLocked && setShopId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
                   placeholder="e.g. kunal_printing"
-                  className="font-mono text-xs"
+                  className={`font-mono text-xs ${shopLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                   required
                 />
                 <span className="text-[11px] text-muted-foreground mt-0.5 block">
@@ -1704,19 +2156,30 @@ export default function App() {
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <label className="font-semibold text-foreground text-xs">Permanent Shop Unique ID</label>
+                    <div className="flex items-center justify-between">
+                      <label className="font-semibold text-foreground text-xs">Permanent Shop ID</label>
+                      {shopLocked && (
+                        <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Locked
+                        </span>
+                      )}
+                    </div>
                     <Input
                       value={shopId}
+                      disabled={shopLocked}
                       onChange={e => {
+                        if (shopLocked) return
                         const val = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_')
                         setShopId(val)
                         localStorage.setItem('nearby_shop_unique_id', val)
                       }}
-                      className="font-mono text-xs"
+                      className={`font-mono text-xs ${shopLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                       placeholder="e.g. kunal_print"
                     />
                     <span className="text-[11px] text-muted-foreground">
-                      Must match the 'shop_unique_id' in Supabase print_jobs table (e.g. <span className="font-mono text-indigo-500 font-semibold">kunal_print</span>).
+                      {shopLocked
+                        ? 'Your Permanent Shop ID is locked to protect your printed QR standee.'
+                        : 'Choose carefully — once saved, Shop ID cannot be changed.'}
                     </span>
                   </div>
 
@@ -1746,13 +2209,22 @@ export default function App() {
                     />
                   </div>
 
-                  <Button
-                    onClick={handleSaveShop}
-                    disabled={isSavingShop}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs mt-1"
-                  >
-                    {isSavingShop ? 'Saving…' : 'Save & Sync Shop Info'}
-                  </Button>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Button
+                      onClick={handleSaveShop}
+                      disabled={isSavingShop}
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs"
+                    >
+                      {isSavingShop ? 'Saving…' : 'Save & Sync Shop Info'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleSignOut}
+                      className="text-red-500 hover:text-red-600 hover:bg-red-500/10 border-red-500/20 text-xs gap-1.5"
+                    >
+                      <LogOut className="w-3.5 h-3.5" /> Sign Out
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -1915,6 +2387,85 @@ export default function App() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Help & Support Modal */}
+      {showHelpModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setShowHelpModal(false)}
+        >
+          <div
+            className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[88vh]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <HelpCircle className="w-5 h-5 text-sky-500" />
+                <h2 className="text-base font-semibold">Help &amp; Support</h2>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setShowHelpModal(false)} className="h-8 w-8">
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex flex-col gap-4 text-xs">
+              <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex flex-col gap-1.5">
+                <span className="font-bold text-sm text-indigo-500">
+                  NearbyPrint Support — Developed by Nootan Kumar (Korba, Chhattisgarh)
+                </span>
+                <p className="text-muted-foreground leading-relaxed">
+                  Commercial SaaS Print Counter &amp; LAN Printer Bridge for Indian Print Shops &amp; CSC Centers.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <a
+                  href="mailto:imnootan@gmail.com"
+                  className="p-3 rounded-xl bg-muted/40 border border-border hover:border-indigo-500/50 transition-colors flex items-center gap-3"
+                >
+                  <div className="p-2 rounded-lg bg-indigo-500/15 text-indigo-500">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block font-semibold text-foreground">Email Support</span>
+                    <span className="text-[11px] text-indigo-500 font-mono truncate block">imnootan@gmail.com</span>
+                  </div>
+                </a>
+
+                <div className="p-3 rounded-xl bg-muted/40 border border-border flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-500/15 text-emerald-500">
+                    <MessageSquare className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="block font-semibold text-foreground">WhatsApp / Call Support</span>
+                    <span className="text-[11px] text-muted-foreground font-mono flex items-center gap-1">
+                      <Phone className="w-3 h-3" /> +91-XXXXXXXXXX (10AM–7PM)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <h3 className="font-bold text-foreground text-xs uppercase tracking-wider">Quick Troubleshooting Guide</h3>
+                <div className="p-3 rounded-xl bg-muted/30 border border-border flex flex-col gap-2 leading-relaxed text-muted-foreground">
+                  <div>
+                    <strong className="text-foreground">1. Customer sees &ldquo;Counter Offline&rdquo;:</strong> Keep this NearbyPrint Desktop app open on your shop PC. It sends a live heartbeat every 30 seconds.
+                  </div>
+                  <div>
+                    <strong className="text-foreground">2. Printer not printing:</strong> Check <em>Dual Printer Assignment</em> and make sure your physical printer (HP LaserJet / Epson / Canon) is selected instead of Microsoft Print to PDF.
+                  </div>
+                  <div>
+                    <strong className="text-foreground">3. Windows-to-Windows LAN Sharing:</strong> Switch to the <strong>Local Wi-Fi</strong> tab to share a printer or forward jobs to another Windows PC on the same router. Allow Port 8631 in Settings → Firewall if blocked.
+                  </div>
+                  <div>
+                    <strong className="text-foreground">4. Spam / Pending Queue Cleanup:</strong> Use the red <strong>Reject All</strong> button in the Print Queue to clear unwanted jobs and delete their cloud files immediately.
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

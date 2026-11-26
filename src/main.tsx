@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import CustomerUploadPortal from './CustomerUploadPortal'
+import AdminPanel from './AdminPanel'
 import './index.css'
 
 function RootRouter() {
@@ -24,8 +25,13 @@ function RootRouter() {
   const lower = currentPath.toLowerCase()
   const isTauri = typeof window !== 'undefined' && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
 
-  // Check if explicit dashboard mode requested
-  if (lower.includes('#dashboard') || lower.includes('mode=dashboard')) {
+  // Super Admin route (/admin)
+  if (lower.startsWith('/admin') || lower.includes('#/admin')) {
+    return <AdminPanel />
+  }
+
+  // Shop Owner Web Panel (/shop-panel) or explicit dashboard mode
+  if (lower.startsWith('/shop-panel') || lower.includes('#dashboard') || lower.includes('mode=dashboard')) {
     return <App />
   }
 

@@ -17,9 +17,11 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 export type ShopRecord = {
   id?: string
+  user_id?: string
   shop_unique_id: string
   shop_name: string
   owner_name: string
+  last_active_at?: string | null
   created_at?: string
 }
 
@@ -29,7 +31,18 @@ export type CloudPrintJob = {
   customer_name: string
   file_url: string
   status: 'pending' | 'printed' | 'rejected' | 'processing'
+  client_session_id?: string | null
   created_at?: string
+}
+
+/**
+ * Checks if a shop's desktop app heartbeat is active (within the last 90 seconds).
+ */
+export function isShopLive(lastActiveAt?: string | null): boolean {
+  if (!lastActiveAt) return false
+  const ts = new Date(lastActiveAt).getTime()
+  if (Number.isNaN(ts)) return false
+  return Date.now() - ts <= 90_000
 }
 
 /**
